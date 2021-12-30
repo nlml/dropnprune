@@ -204,8 +204,10 @@ class Pruner:
             )
         return int(
             round(
-                self.pruning_scheduler(epoch) * self.total_num_to_prune
-                - self.num_pruned_so_far
+                (
+                    self.pruning_scheduler(epoch) * self.total_num_to_prune
+                    - self.num_pruned_so_far
+                ).item()
             )
         )
 
