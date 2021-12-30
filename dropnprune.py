@@ -284,7 +284,7 @@ class Pruner:
         self._last_scores = scores.detach().cpu()
 
         # TODO: DELETE THIS
-        # scores = torch.randn([len(scores)])
+        scores = torch.randn([len(scores)])
         highest_score_idxs = torch.argsort(-scores)
         highest_score_idxs = highest_score_idxs[:n_channels_to_prune]
         cum_layer_sizes = torch.cumsum(
