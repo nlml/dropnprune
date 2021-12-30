@@ -168,7 +168,7 @@ class Pruner:
                     0,
                 )
             assert x.shape[0] == 200
-            self.f = torch.cumsum(x / x.sum())
+            self.f = torch.cumsum(x / x.sum(), 0)
 
     @property
     def num_pruned_so_far(self):
