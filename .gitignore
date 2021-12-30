@@ -1,3 +1,6 @@
+*.trace
+*.pth
+*.onnx
 /lightning_logs
 
 # Byte-compiled / optimized / DLL files

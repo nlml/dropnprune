@@ -4,6 +4,7 @@ from torch import nn
 from typing import Optional
 
 from torch.autograd.grad_mode import F
+from torch import Tensor
 
 
 def get_modules_start_with_name(model, name):
@@ -27,15 +28,17 @@ class ReUpScaleLayer(nn.Module):
     def __init__(self, num_features_out):
         super().__init__()
         self.num_features_out = num_features_out
-        self.sel = None
+        self.register_buffer("sel", torch.arange(self.num_features_out))
 
-    def forward(self, x):
+    def forward(self, x) -> Tensor:
         if self.sel is None:
             return x
         with torch.no_grad():
-            out = torch.zeros_like(x[:, :1])
-            out = torch.tile(out, [1, self.num_features_out] + [1] * (len(x.shape) - 2))
-        out[:, self.sel] += x
+            out = torch.zeros(
+                [x.shape[0], self.num_features_out] + [int(i) for i in x.shape[-2:]],
+                device=x.device,
+            )
+            out[:, self.sel] += x
         return out
 
 
@@ -51,32 +54,32 @@ class DropNPrune(nn.Module):
 
         self.lamb = 64 / n_channels
 
+        self.bypass = False
         self.recording = True
-        self.enabled = True
         self.register_buffer("masks_history", torch.zeros([0, self.n_channels]))
         self.register_buffer("enabled_params", torch.ones([1, self.n_channels, 1, 1]))
 
-    def forward(self, x):
-        if self.training and self.enabled:
+    def _forward(self, x) -> Tensor:
+        if self.bypass:
+            return x
+        if self.training:
             with torch.no_grad():
                 shape = [x.shape[0], len(self.remaining_channels)]  # (B, C)
                 mask_small = get_dropout_mask(shape, self.p, x.device)  # (B, C)
                 mask = torch.ones_like(x)
                 rem = torch.LongTensor(self.remaining_channels)
                 mask[:, rem] *= mask_small.unsqueeze(-1).unsqueeze(-1)
-            out = x * mask * self.enabled_params * (1.0 / (1 - self.p))  # (B, C, 1, 1)
-            if self.training and self.recording:
-                with torch.no_grad():
+                if self.recording:
                     self.masks_history = torch.cat([self.masks_history, mask_small], 0)
-        else:
-            out = x * self.enabled_params
-        if self.required_output_channels is not None:
-            if out.shape[1] != self.required_output_channels:
-                if self.required_output_channels.sel is None:
-                    sel = torch.where(self.enabled_params[0, :, 0, 0])[0].cpu()
-                    self.reupscale_layer.sel = sel
-                out = self.reupscale_layer(out)
-        return out
+            x = x * mask * (1.0 / (1 - self.p))  # (B, C, 1, 1)
+        return x * self.enabled_params
+
+    def forward(self, x) -> Tensor:
+        x = self._forward(x)
+        if hasattr(self, "reupscale_layer"):
+            if x.shape[1] != self.required_output_channels:
+                return self.reupscale_layer(x)
+        return x
 
     def prune_some_channels(self, channels):
         channels_in_orig = torch.tensor(self.remaining_channels, device=channels.device)

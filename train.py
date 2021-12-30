@@ -45,11 +45,14 @@ test_transforms = torchvision.transforms.Compose(
 
 
 class LitResnet(LightningModule):
-    def __init__(self, lr=0.1, create_model_fn=resnet32):
+    def __init__(self, lr=0.1, create_model_fn=resnet32, planes_per_layer=None):
         super().__init__()
 
         self.save_hyperparameters()
-        self.model = create_model_fn()
+        if planes_per_layer is None:
+            self.model = create_model_fn()
+        else:
+            self.model = create_model_fn(planes_per_layer=planes_per_layer)
         self.pruner = Pruner(self.model)
         self.num_pruned_so_far = 0
 
@@ -107,34 +110,39 @@ class LitResnet(LightningModule):
         return {"optimizer": optimizer, "lr_scheduler": scheduler_dict}
 
 
-model = LitResnet()
+if __name__ == "__main__":
+    model = LitResnet()
 
-trainset = torchvision.datasets.CIFAR10(
-    root=PATH_DATASETS, train=True, download=True, transform=train_transforms
-)
-trainloader = torch.utils.data.DataLoader(
-    trainset,
-    batch_size=BATCH_SIZE,
-    shuffle=True,
-    num_workers=NUM_WORKERS,
-    drop_last=True,
-)
+    trainset = torchvision.datasets.CIFAR10(
+        root=PATH_DATASETS, train=True, download=True, transform=train_transforms
+    )
+    trainloader = torch.utils.data.DataLoader(
+        trainset,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=NUM_WORKERS,
+        drop_last=True,
+        pin_memory=True,
+    )
+    testset = torchvision.datasets.CIFAR10(
+        root=PATH_DATASETS, train=False, download=True, transform=test_transforms
+    )
+    testloader = torch.utils.data.DataLoader(
+        testset,
+        batch_size=BATCH_SIZE,
+        num_workers=NUM_WORKERS,
+        pin_memory=True,
+    )
 
-testset = torchvision.datasets.CIFAR10(
-    root=PATH_DATASETS, train=False, download=True, transform=test_transforms
-)
-testloader = torch.utils.data.DataLoader(
-    testset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS
-)
+    trainer = Trainer(
+        progress_bar_refresh_rate=10,
+        max_epochs=200,
+        gpus=1,
+        logger=TensorBoardLogger(f"lightning_logs", name=EXP_NAME),
+        callbacks=[LearningRateMonitor(logging_interval="epoch")],
+        # precision=16,
+        num_sanity_val_steps=0,
+        enable_checkpointing=True,
+    )
 
-trainer = Trainer(
-    progress_bar_refresh_rate=10,
-    max_epochs=200,
-    gpus=1,
-    logger=TensorBoardLogger(f"lightning_logs", name=EXP_NAME),
-    callbacks=[LearningRateMonitor(logging_interval="epoch")],
-    # precision=16,
-    num_sanity_val_steps=0,
-)
-
-trainer.fit(model, trainloader, testloader)
+    trainer.fit(model, trainloader, testloader)
