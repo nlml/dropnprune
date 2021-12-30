@@ -20,7 +20,7 @@ def get_modules_start_with_name(model, name):
 
 
 def get_dropout_mask(shape, prob, device="cpu"):
-    return torch.bernoulli(torch.tensor([1 - prob]).repeat(shape)).to(device)
+    return torch.bernoulli(torch.full(shape, 1 - prob, device=device))
 
 
 class ReUpScaleLayer(nn.Module):
@@ -44,6 +44,7 @@ class DropNPrune(nn.Module):
         super().__init__()
         self.p = p
         self.n_channels = n_channels
+        self.remaining_channels = list(range(self.n_channels))
         self.required_output_channels = required_output_channels
         if self.required_output_channels is not None:
             self.reupscale_layer = ReUpScaleLayer(self.required_output_channels)
@@ -53,24 +54,18 @@ class DropNPrune(nn.Module):
         self.register_buffer("masks_history", torch.zeros([0, self.n_channels]))
         self.register_buffer("enabled_params", torch.ones([1, self.n_channels, 1, 1]))
 
-    def reset_masks_history(self):
-        self.masks_history = torch.zeros([0, self.n_channels]).to(
-            self.masks_history.device
-        )
-
     def forward(self, x):
         if self.training and self.enabled:
-            shape = [x.shape[0], x.shape[1]]  # (B, C)
-            mask = get_dropout_mask(shape, self.p, x.device)  # (B, C)
-            out = (
-                x
-                * mask.unsqueeze(-1).unsqueeze(-1)
-                * self.enabled_params
-                * (1.0 / (1 - self.p))
-            )  # (B, C, 1, 1)
+            with torch.no_grad():
+                shape = [x.shape[0], len(self.remaining_channels)]  # (B, C)
+                mask_small = get_dropout_mask(shape, self.p, x.device)  # (B, C)
+                mask = torch.ones_like(x)
+                rem = torch.LongTensor(self.remaining_channels)
+                mask[:, rem] *= mask_small.unsqueeze(-1).unsqueeze(-1)
+            out = x * mask * self.enabled_params * (1.0 / (1 - self.p))  # (B, C, 1, 1)
             if self.training and self.recording:
                 with torch.no_grad():
-                    self.masks_history = torch.cat([self.masks_history, mask], 0)
+                    self.masks_history = torch.cat([self.masks_history, mask_small], 0)
         else:
             out = x * self.enabled_params
         if self.required_output_channels is not None:
@@ -82,8 +77,11 @@ class DropNPrune(nn.Module):
         return out
 
     def prune_some_channels(self, channels):
+        channels_in_orig = [self.remaining_channels[i] for i in channels]
         with torch.no_grad():
-            self.enabled_params[0, torch.LongTensor(channels)] = 0
+            self.enabled_params[0, torch.LongTensor(channels_in_orig)] = 0
+        for c in channels_in_orig:
+            self.remaining_channels.remove(c)
 
     def state_dict(self, destination=None, prefix="", keep_vars=False):
         """Overrides state_dict() to not save any masks_history"""
@@ -92,19 +90,25 @@ class DropNPrune(nn.Module):
         return d
 
 
-def linreg_torch(x, y, p=None):
+def linreg_torch(x, y, p=None, lamb=None):
     # betas = (X'X)^1 X'y
+    N, D = x.shape[0], x.shape[1]
     if p is not None:
         # p should be probability entry == 1 (ie prob of not dropping out)
-        N = x.shape[0]
+        print(f"Linear regression with matrix of shape: {list(x.shape)}")
         c = p ** 2
-        xtransx = torch.eye(int(x.shape[1])).to(x.device) * (p - c)  # diagonal = p
+        xtransx = torch.eye(D, device=x.device) * (p - c)  # diagonal = p
         xtransx += c  # off-diagonals = p ** 2
         xtransx *= N
+        if lamb is not None:
+            xtransx += lamb * torch.eye(D, device=x.device)
         betas = torch.linalg.inv(xtransx).matmul(x.T)
     else:
-
-        betas = torch.linalg.pinv(x)
+        if lamb is None:
+            betas = torch.linalg.pinv(x)
+        else:
+            xtransx = x.T.matmul(x) + lamb * torch.eye(D, device=x.device)
+            betas = torch.linalg.inv(x).matmul(x.T)
     betas = betas.matmul(y)
     return betas
 
@@ -115,6 +119,7 @@ def estimate_trend(y, x):
         x = torch.stack(
             [
                 torch.ones([x.shape[0]], device=x.device),
+                x,
                 torch.log(x),
                 torch.sqrt(x),
             ],
@@ -131,7 +136,7 @@ class Pruner:
         pruning_freq: Optional[int] = None,
         prune_on_batch_idx: Optional[int] = 0,
         pruning_warmup: int = 0,
-        pct_to_prune: float = 0.5,
+        pct_to_prune: float = 0.4,
         sched_cfg: dict = {"type": "cosine"},
     ):
 
@@ -151,7 +156,7 @@ class Pruner:
 
         with torch.no_grad():
             if self.sched_cfg["type"] == "cosine":
-                warmup = self.sched_cfg.get("warmup", 0)
+                warmup = self.sched_cfg.get("warmup", 5)
                 x = torch.cos(torch.linspace(0, torch.pi, 200 - warmup)) / 2 + 0.5
                 x = torch.cat([torch.linspace(0, 1, warmup), x])
             else:  # default pruning schedule
@@ -163,7 +168,13 @@ class Pruner:
                     0,
                 )
             assert x.shape[0] == 200
-            self.f = x / x.sum()
+            self.f = torch.cumsum(x / x.sum())
+
+    @property
+    def num_pruned_so_far(self):
+        return self.total_num_params - sum(
+            [l.enabled_params.sum().item() for l in self.dropnprune_layers]
+        )
 
     def step(self, loss):
         self.global_step += 1
@@ -172,7 +183,7 @@ class Pruner:
     def clean_up(self):
         with torch.no_grad():
             for l in self.dropnprune_layers:
-                l.masks_history = torch.zeros([0, l.n_channels]).to(
+                l.masks_history = torch.zeros([0, len(l.remaining_channels)]).to(
                     l.masks_history.device
                 )
             self._loss_history = []
@@ -191,7 +202,12 @@ class Pruner:
             raise Exception(
                 "Either pruning_freq or prune_on_batch_idx must be defined!"
             )
-        return self.pruning_scheduler(epoch) * self.total_num_to_prune
+        return int(
+            round(
+                self.pruning_scheduler(epoch) * self.total_num_to_prune
+                - self.num_pruned_so_far
+            )
+        )
 
     def maybe_run_pruning(self, batch_idx, epoch):
         num_to_prune = self.calc_num_to_prune(batch_idx, epoch)
@@ -204,10 +220,6 @@ class Pruner:
             self.clean_up()
 
     def run_pruning(self, loss_history, n_channels_to_prune):
-        rrr = n_channels_to_prune - int(n_channels_to_prune)
-        n_channels_to_prune = int(n_channels_to_prune) + int(
-            torch.rand([1]).item() < rrr
-        )
         if n_channels_to_prune <= 0:
             return None
         print("Running pruning...")

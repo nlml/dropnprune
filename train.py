@@ -17,7 +17,7 @@ from dropnprune import Pruner
 seed_everything(7)
 
 
-EXP_NAME = "test/prune0.5-cosineSched-sqrtInTrend"
+EXP_NAME = "prune0.4-cosineWarm5-sqrtInTrend-fixDrop"
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 PATH_DATASETS = "/home/liam/woven-cifar10-challenge-master/data"
 BATCH_SIZE = 128
@@ -56,6 +56,8 @@ class LitResnet(LightningModule):
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
+        if batch_idx == 0:
+            self.log("num_pruned_so_far", self.pruner.num_pruned_so_far)
         self.pruner.maybe_run_pruning(batch_idx, self.current_epoch)
         x, y = batch
         logits = self(x)
@@ -122,7 +124,7 @@ trainer = Trainer(
     progress_bar_refresh_rate=10,
     max_epochs=200,
     gpus=1,
-    logger=TensorBoardLogger(f"lightning_logs/{EXP_NAME}", name="resnet"),
+    logger=TensorBoardLogger(f"lightning_logs", name=EXP_NAME),
     callbacks=[LearningRateMonitor(logging_interval="epoch")],
     # precision=16,
 )
