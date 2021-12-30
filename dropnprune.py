@@ -140,8 +140,8 @@ class Pruner:
         model,
         pruning_freq: Optional[int] = None,
         prune_on_batch_idx: Optional[int] = 0,
-        pct_to_prune: float = 0.2,
-        sched_cfg: dict = {"type": "cosine", "warmup": 10, "hard_warmup": True},
+        pct_to_prune: float = 0.4,
+        sched_cfg: dict = {"type": "cosine", "warmup": 10, "invert": True},
     ):
 
         self.pruning_freq = pruning_freq
@@ -162,7 +162,11 @@ class Pruner:
         with torch.no_grad():
             if self.sched_cfg["type"] == "cosine":
                 warmup = self.sched_cfg.get("warmup", 5)
-                x = torch.cos(torch.linspace(0, torch.pi, 200 - warmup)) / 2 + 0.5
+                if sched_cfg.get("invert", False):
+                    sched_cfg["warmup"] = 0
+                    x = torch.cos(torch.linspace(torch.pi, 0, 200 - warmup)) / 2 + 0.5
+                else:
+                    x = torch.cos(torch.linspace(0, torch.pi, 200 - warmup)) / 2 + 0.5
                 if sched_cfg.get("hard_warmup", False):
                     x = torch.cat([torch.zeros([warmup]), x])
                 else:
