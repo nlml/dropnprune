@@ -135,7 +135,7 @@ class Pruner:
         model,
         pruning_freq: Optional[int] = None,
         prune_on_batch_idx: Optional[int] = 0,
-        pct_to_prune: float = 0.2,
+        pct_to_prune: float = 0.4,
         sched_cfg: dict = {"type": "cosine"},
     ):
 
