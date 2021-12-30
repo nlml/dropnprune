@@ -12,9 +12,12 @@ from torch.optim.swa_utils import AveragedModel, update_bn
 from torchmetrics.functional import accuracy
 
 from resnet import resnet32
+from dropnprune import Pruner
 
 seed_everything(7)
 
+
+EXP_NAME = "test/prune0.5-cosineSched-sqrtInTrend"
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 PATH_DATASETS = "/home/liam/woven-cifar10-challenge-master/data"
 BATCH_SIZE = 128
@@ -47,14 +50,18 @@ class LitResnet(LightningModule):
 
         self.save_hyperparameters()
         self.model = create_model_fn()
+        self.pruner = Pruner(self.model)
 
     def forward(self, x):
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
+        self.pruner.maybe_run_pruning(batch_idx, self.current_epoch)
         x, y = batch
         logits = self(x)
-        loss = F.cross_entropy(logits, y)
+        loss = F.cross_entropy(logits, y, reduction="none")
+        self.pruner.step(loss)
+        loss = loss.mean()
         self.log("train_loss", loss)
         return loss
 
@@ -93,7 +100,6 @@ class LitResnet(LightningModule):
 
 model = LitResnet()
 
-
 trainset = torchvision.datasets.CIFAR10(
     root=PATH_DATASETS, train=True, download=True, transform=train_transforms
 )
@@ -114,11 +120,11 @@ testloader = torch.utils.data.DataLoader(
 
 trainer = Trainer(
     progress_bar_refresh_rate=10,
-    max_epochs=30,
+    max_epochs=200,
     gpus=1,
-    logger=TensorBoardLogger("lightning_logs/", name="resnet"),
-    callbacks=[LearningRateMonitor(logging_interval="step")],
-    precision=16,
+    logger=TensorBoardLogger(f"lightning_logs/{EXP_NAME}", name="resnet"),
+    callbacks=[LearningRateMonitor(logging_interval="epoch")],
+    # precision=16,
 )
 
 trainer.fit(model, trainloader, testloader)

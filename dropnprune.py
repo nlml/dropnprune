@@ -1,6 +1,9 @@
 import time
 import torch
 from torch import nn
+from typing import Optional
+
+from torch.autograd.grad_mode import F
 
 
 def get_modules_start_with_name(model, name):
@@ -45,7 +48,7 @@ class DropNPrune(nn.Module):
         if self.required_output_channels is not None:
             self.reupscale_layer = ReUpScaleLayer(self.required_output_channels)
 
-        self.recording = False
+        self.recording = True
         self.enabled = True
         self.register_buffer("masks_history", torch.zeros([0, self.n_channels]))
         self.register_buffer("enabled_params", torch.ones([1, self.n_channels, 1, 1]))
@@ -113,7 +116,7 @@ def estimate_trend(y, x):
             [
                 torch.ones([x.shape[0]], device=x.device),
                 torch.log(x),
-                # torch.sqrt(x),
+                torch.sqrt(x),
             ],
             1,
         )
@@ -121,63 +124,147 @@ def estimate_trend(y, x):
     return x.matmul(betas)
 
 
-def run_pruning(loss_history, dropprunes, n_channels_to_prune):
-    rrr = n_channels_to_prune - int(n_channels_to_prune)
-    n_channels_to_prune = int(n_channels_to_prune) + int(torch.rand([1]).item() < rrr)
-    if n_channels_to_prune <= 0:
-        return None
-    print("Running pruning...")
-    now = time.time()
-    dropprune_layers = [i for i in dropprunes]
-    print(f"len(dropprune_layers): {len(dropprune_layers)}")
-    all_mask_histories = [i.masks_history for i in dropprune_layers]
-    layer_idxs = torch.cat(
-        [
-            torch.full([i.shape[1]], idx, device=loss_history[0].device)
-            for idx, i in enumerate(all_mask_histories)
-        ]
-    )
-    all_mask_histories = torch.cat(
-        all_mask_histories, 1
-    )  # (N, featuresLayeri * L layers)
-    # loss_timestamps = [1, 1, 1, ..., 2, 2, 2, ..., ..., pruning_freq, pruning_freq, ...]
-    loss_timestamps = torch.cat(
-        [
-            torch.full([i.shape[0]], idx + 1, device=loss_history[0].device)
-            for idx, i in enumerate(loss_history)
-        ]
-    )
-    all_losses = torch.cat(loss_history, 0)  # (N,)
-    trend = estimate_trend(all_losses, loss_timestamps)
-    # detrended_loss = all_losses - trend
-    # hi score means dropping that param out tended to cause large increases in loss
-    # lo score means dropping that param tended to have minimal impact or even help
-    pct_diff_loss_to_trend = all_losses / trend - 1
-    # import pdb; pdb.set_trace()
+class Pruner:
+    def __init__(
+        self,
+        model,
+        pruning_freq: Optional[int] = None,
+        prune_on_batch_idx: Optional[int] = 0,
+        pruning_warmup: int = 0,
+        pct_to_prune: float = 0.5,
+        sched_cfg: dict = {"type": "cosine"},
+    ):
 
-    scores = linreg_torch(
-        all_mask_histories, pct_diff_loss_to_trend, 1 - dropprunes[0].p
-    )
-    # torch.save((all_mask_histories.cpu().numpy(), all_losses, loss_timestamps), '/tmp/tt')
+        self.pruning_freq = pruning_freq
+        self.prune_on_batch_idx = prune_on_batch_idx
+        self.pruning_warmup = pruning_warmup
+        self.pct_to_prune = pct_to_prune
+        self.sched_cfg = sched_cfg
+        self._loss_history = []
+        self.global_step = 0
 
-    # TODO: DELETE THIS
-    # scores = torch.randn([len(scores)])
-    lowest_score_idxs = torch.argsort(-scores)[:n_channels_to_prune]
-    cum_layer_sizes = torch.cumsum(
-        torch.LongTensor([0] + [i.masks_history.shape[1] for i in dropprune_layers]),
-        0,
-    )
-    to_prune = {}
-    for idx in lowest_score_idxs:
-        layer_idx = layer_idxs[idx]
-        idx_in_layer = idx - cum_layer_sizes[layer_idx]
-        if layer_idx not in to_prune:
-            to_prune[layer_idx] = [idx_in_layer]
+        self.dropnprune_layers = get_modules_start_with_name(model, "DropNPrune")
+        self.total_num_params = sum(
+            [l.enabled_params.sum().item() for l in self.dropnprune_layers]
+        )
+        self.total_num_to_prune = int(self.pct_to_prune * self.total_num_params)
+
+        with torch.no_grad():
+            if self.sched_cfg["type"] == "cosine":
+                warmup = self.sched_cfg.get("warmup", 0)
+                x = torch.cos(torch.linspace(0, torch.pi, 200 - warmup)) / 2 + 0.5
+                x = torch.cat([torch.linspace(0, 1, warmup), x])
+            else:  # default pruning schedule
+                x = torch.cat(
+                    [
+                        torch.tile(torch.LongTensor([1]), [100]),
+                        torch.tile(torch.LongTensor([0]), [100]),
+                    ],
+                    0,
+                )
+            assert x.shape[0] == 200
+            self.f = x / x.sum()
+
+    def step(self, loss):
+        self.global_step += 1
+        self._loss_history.append(loss.detach())
+
+    def clean_up(self):
+        with torch.no_grad():
+            for l in self.dropnprune_layers:
+                l.masks_history = torch.zeros([0, l.n_channels]).to(
+                    l.masks_history.device
+                )
+            self._loss_history = []
+
+    def pruning_scheduler(self, epoch):
+        return self.f[epoch]
+
+    def calc_num_to_prune(self, batch_idx, epoch):
+        if self.prune_on_batch_idx is not None:
+            if self.prune_on_batch_idx != batch_idx:
+                return None
+        elif self.pruning_freq is not None:
+            if self.global_step % self.pruning_freq != 0:
+                return None
         else:
-            to_prune[layer_idx].append(idx_in_layer)
-    for layer_idx, channels_to_prune in to_prune.items():
-        dropprune_layers[layer_idx].prune_some_channels(channels_to_prune)
-    print(f"Done pruning! in {time.time() - now:.2f} secs")
+            raise Exception(
+                "Either pruning_freq or prune_on_batch_idx must be defined!"
+            )
+        return self.pruning_scheduler(epoch) * self.total_num_to_prune
 
-    print([(i, l.enabled_params.sum().item()) for i, l in enumerate(dropprune_layers)])
-    return None
+    def maybe_run_pruning(self, batch_idx, epoch):
+        num_to_prune = self.calc_num_to_prune(batch_idx, epoch)
+        if num_to_prune is not None:
+            if num_to_prune > 0:
+                if len([i.masks_history for i in self.dropnprune_layers][0]):
+                    if len(self._loss_history):
+                        print("num_to_prune", num_to_prune)
+                        self.run_pruning(self._loss_history, num_to_prune)
+            self.clean_up()
+
+    def run_pruning(self, loss_history, n_channels_to_prune):
+        rrr = n_channels_to_prune - int(n_channels_to_prune)
+        n_channels_to_prune = int(n_channels_to_prune) + int(
+            torch.rand([1]).item() < rrr
+        )
+        if n_channels_to_prune <= 0:
+            return None
+        print("Running pruning...")
+        now = time.time()
+        all_mask_histories = [i.masks_history for i in self.dropnprune_layers]
+        layer_idxs = torch.cat(
+            [
+                torch.full([i.shape[1]], idx, device=loss_history[0].device)
+                for idx, i in enumerate(all_mask_histories)
+            ]
+        )
+        # all_mask_histories: (N, featuresLayeri * L layers)
+        all_mask_histories = torch.cat(all_mask_histories, 1)
+        # loss_timestamps = [1, 1, 1, ..., 2, 2, 2, ..., ..., pruning_freq, pruning_freq, ...]
+        loss_timestamps = torch.cat(
+            [
+                torch.full([i.shape[0]], idx + 1, device=loss_history[0].device)
+                for idx, i in enumerate(loss_history)
+            ]
+        )
+        all_losses = torch.cat(loss_history, 0)  # (N,)
+        trend = estimate_trend(all_losses, loss_timestamps)
+        # detrended_loss = all_losses - trend
+        # hi score means dropping that param out tended to cause large increases in loss
+        # lo score means dropping that param tended to have minimal impact or even help
+        pct_diff_loss_to_trend = all_losses / trend - 1
+        # import pdb; pdb.set_trace()
+
+        scores = linreg_torch(
+            all_mask_histories, pct_diff_loss_to_trend, 1 - self.dropnprune_layers[0].p
+        )
+        # torch.save((all_mask_histories.cpu().numpy(), all_losses, loss_timestamps), '/tmp/tt')
+
+        # TODO: DELETE THIS
+        # scores = torch.randn([len(scores)])
+        lowest_score_idxs = torch.argsort(-scores)[:n_channels_to_prune]
+        cum_layer_sizes = torch.cumsum(
+            torch.LongTensor(
+                [0] + [i.masks_history.shape[1] for i in self.dropnprune_layers]
+            ),
+            0,
+        )
+        to_prune = {}
+        for idx in lowest_score_idxs:
+            layer_idx = layer_idxs[idx]
+            idx_in_layer = idx - cum_layer_sizes[layer_idx]
+            if layer_idx not in to_prune:
+                to_prune[layer_idx] = [idx_in_layer]
+            else:
+                to_prune[layer_idx].append(idx_in_layer)
+        for layer_idx, channels_to_prune in to_prune.items():
+            self.dropnprune_layers[layer_idx].prune_some_channels(channels_to_prune)
+        print(f"Done pruning! in {time.time() - now:.2f} secs")
+
+        print(
+            [
+                (i, l.enabled_params.sum().item())
+                for i, l in enumerate(self.dropnprune_layers)
+            ]
+        )
