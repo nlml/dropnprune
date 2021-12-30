@@ -77,9 +77,10 @@ class DropNPrune(nn.Module):
         return out
 
     def prune_some_channels(self, channels):
-        channels_in_orig = [self.remaining_channels[i] for i in channels]
+        channels_in_orig = torch.tensor(self.remaining_channels, device=channels.device)
+        channels_in_orig = channels_in_orig[channels]
         with torch.no_grad():
-            self.enabled_params[0, torch.LongTensor(channels_in_orig)] = 0
+            self.enabled_params[0, channels_in_orig] = 0
         for c in channels_in_orig:
             self.remaining_channels.remove(c)
 
@@ -95,7 +96,6 @@ def linreg_torch(x, y, p=None, lamb=None):
     N, D = x.shape[0], x.shape[1]
     if p is not None:
         # p should be probability entry == 1 (ie prob of not dropping out)
-        print(f"Linear regression with matrix of shape: {list(x.shape)}")
         c = p ** 2
         xtransx = torch.eye(D, device=x.device) * (p - c)  # diagonal = p
         xtransx += c  # off-diagonals = p ** 2
@@ -147,11 +147,13 @@ class Pruner:
         self.sched_cfg = sched_cfg
         self._loss_history = []
         self.global_step = 0
+        self._num_pruned_so_far = 0
 
         self.dropnprune_layers = get_modules_start_with_name(model, "DropNPrune")
         self.total_num_params = sum(
             [l.enabled_params.sum().item() for l in self.dropnprune_layers]
         )
+        self._num_remaining_params = self.total_num_params
         self.total_num_to_prune = int(self.pct_to_prune * self.total_num_params)
 
         with torch.no_grad():
@@ -172,9 +174,11 @@ class Pruner:
 
     @property
     def num_pruned_so_far(self):
-        return self.total_num_params - sum(
-            [l.enabled_params.sum().item() for l in self.dropnprune_layers]
-        )
+        self._num_remaining_params = sum(
+            [l.enabled_params.sum() for l in self.dropnprune_layers]
+        ).item()
+        self._num_pruned_so_far = self.total_num_params - self._num_remaining_params
+        return self._num_pruned_so_far
 
     def step(self, loss):
         self.global_step += 1
@@ -212,6 +216,7 @@ class Pruner:
         )
 
     def maybe_run_pruning(self, batch_idx, epoch):
+        ran_pruning = False
         num_to_prune = self.calc_num_to_prune(batch_idx, epoch)
         if num_to_prune is not None:
             if num_to_prune > 0:
@@ -219,7 +224,9 @@ class Pruner:
                     if len(self._loss_history):
                         print("num_to_prune", num_to_prune)
                         self.run_pruning(self._loss_history, num_to_prune)
+                        ran_pruning = True
             self.clean_up()
+        return ran_pruning
 
     def run_pruning(self, loss_history, n_channels_to_prune):
         if n_channels_to_prune <= 0:
@@ -248,34 +255,34 @@ class Pruner:
         # hi score means dropping that param out tended to cause large increases in loss
         # lo score means dropping that param tended to have minimal impact or even help
         pct_diff_loss_to_trend = all_losses / trend - 1
-        # import pdb; pdb.set_trace()
 
         scores = linreg_torch(
             all_mask_histories, pct_diff_loss_to_trend, 1 - self.dropnprune_layers[0].p
         )
-        # torch.save((all_mask_histories.cpu().numpy(), all_losses, loss_timestamps), '/tmp/tt')
 
         # TODO: DELETE THIS
         # scores = torch.randn([len(scores)])
-        lowest_score_idxs = torch.argsort(-scores)[:n_channels_to_prune]
+        highest_score_idxs = torch.argsort(-scores)[:n_channels_to_prune]
         cum_layer_sizes = torch.cumsum(
             torch.LongTensor(
-                [0] + [i.masks_history.shape[1] for i in self.dropnprune_layers]
+                [0] + [int(i.masks_history.shape[1]) for i in self.dropnprune_layers]
             ),
             0,
         )
         to_prune = {}
-        for idx in lowest_score_idxs:
-            layer_idx = layer_idxs[idx]
+        for idx in highest_score_idxs:
+            layer_idx = layer_idxs[idx].item()
             idx_in_layer = idx - cum_layer_sizes[layer_idx]
             if layer_idx not in to_prune:
                 to_prune[layer_idx] = [idx_in_layer]
             else:
                 to_prune[layer_idx].append(idx_in_layer)
-        for layer_idx, channels_to_prune in to_prune.items():
-            self.dropnprune_layers[layer_idx].prune_some_channels(channels_to_prune)
+        for layer_idx in sorted(to_prune.keys()):
+            channels_to_prune = to_prune[layer_idx]
+            self.dropnprune_layers[layer_idx].prune_some_channels(
+                torch.stack(channels_to_prune)
+            )
         print(f"Done pruning! in {time.time() - now:.2f} secs")
-
         print(
             [
                 (i, l.enabled_params.sum().item())

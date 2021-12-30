@@ -51,13 +51,12 @@ class LitResnet(LightningModule):
         self.save_hyperparameters()
         self.model = create_model_fn()
         self.pruner = Pruner(self.model)
+        self.num_pruned_so_far = 0
 
     def forward(self, x):
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
-        if batch_idx == 0:
-            self.log("num_pruned_so_far", self.pruner.num_pruned_so_far)
         self.pruner.maybe_run_pruning(batch_idx, self.current_epoch)
         x, y = batch
         logits = self(x)
@@ -65,6 +64,8 @@ class LitResnet(LightningModule):
         self.pruner.step(loss)
         loss = loss.mean()
         self.log("train_loss", loss)
+        self.log("num_pruned_so_far", self.pruner._num_pruned_so_far)
+        self.log("num_remaining_params", self.pruner._num_remaining_params)
         return loss
 
     def evaluate(self, batch, stage=None):
@@ -127,6 +128,7 @@ trainer = Trainer(
     logger=TensorBoardLogger(f"lightning_logs", name=EXP_NAME),
     callbacks=[LearningRateMonitor(logging_interval="epoch")],
     # precision=16,
+    num_sanity_val_steps=0,
 )
 
 trainer.fit(model, trainloader, testloader)
