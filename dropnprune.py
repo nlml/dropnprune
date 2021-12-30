@@ -135,14 +135,12 @@ class Pruner:
         model,
         pruning_freq: Optional[int] = None,
         prune_on_batch_idx: Optional[int] = 0,
-        pruning_warmup: int = 0,
-        pct_to_prune: float = 0.4,
+        pct_to_prune: float = 0.2,
         sched_cfg: dict = {"type": "cosine"},
     ):
 
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
-        self.pruning_warmup = pruning_warmup
         self.pct_to_prune = pct_to_prune
         self.sched_cfg = sched_cfg
         self._loss_history = []
