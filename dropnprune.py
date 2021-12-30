@@ -49,6 +49,8 @@ class DropNPrune(nn.Module):
         if self.required_output_channels is not None:
             self.reupscale_layer = ReUpScaleLayer(self.required_output_channels)
 
+        self.lamb = 64 / n_channels
+
         self.recording = True
         self.enabled = True
         self.register_buffer("masks_history", torch.zeros([0, self.n_channels]))
@@ -136,7 +138,7 @@ class Pruner:
         pruning_freq: Optional[int] = None,
         prune_on_batch_idx: Optional[int] = 0,
         pct_to_prune: float = 0.2,
-        sched_cfg: dict = {"type": "cosine"},
+        sched_cfg: dict = {"type": "cosine", "warmup": 10, "hard_warmup": True},
     ):
 
         self.pruning_freq = pruning_freq
@@ -158,7 +160,10 @@ class Pruner:
             if self.sched_cfg["type"] == "cosine":
                 warmup = self.sched_cfg.get("warmup", 5)
                 x = torch.cos(torch.linspace(0, torch.pi, 200 - warmup)) / 2 + 0.5
-                x = torch.cat([torch.linspace(0, 1, warmup), x])
+                if sched_cfg.get("hard_warmup", False):
+                    x = torch.cat([torch.zeros([warmup]), x])
+                else:
+                    x = torch.cat([torch.linspace(0, 1, warmup), x])
             else:  # default pruning schedule
                 x = torch.cat(
                     [
@@ -254,13 +259,27 @@ class Pruner:
         # lo score means dropping that param tended to have minimal impact or even help
         pct_diff_loss_to_trend = all_losses / trend - 1
 
-        scores = linreg_torch(
-            all_mask_histories, pct_diff_loss_to_trend, 1 - self.dropnprune_layers[0].p
+        lambdas = torch.cat(
+            [
+                torch.full(
+                    [len(l.remaining_channels)], l.lamb, device=loss_history[0].device
+                )
+                for l in self.dropnprune_layers
+            ]
         )
+        lambdas = (lambdas ** 2) * 100
+        scores = linreg_torch(
+            all_mask_histories,
+            pct_diff_loss_to_trend,
+            1 - self.dropnprune_layers[0].p,
+            lamb=lambdas,
+        )
+        self._last_scores = scores.detach().cpu()
 
         # TODO: DELETE THIS
         # scores = torch.randn([len(scores)])
-        highest_score_idxs = torch.argsort(-scores)[:n_channels_to_prune]
+        highest_score_idxs = torch.argsort(-scores)
+        highest_score_idxs = highest_score_idxs[:n_channels_to_prune]
         cum_layer_sizes = torch.cumsum(
             torch.LongTensor(
                 [0] + [int(i.masks_history.shape[1]) for i in self.dropnprune_layers]
