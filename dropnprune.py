@@ -315,6 +315,7 @@ class Pruner:
             0,
         )
         to_prune = {}
+        tmp_remaining_channels = {}
         num_pruned = 0
         i = -1
         while num_pruned < n_channels_to_prune:
@@ -322,13 +323,18 @@ class Pruner:
             idx = highest_score_idxs[i]
             layer_idx = layer_idxs[idx].item()
             # Make sure all layers keep at least 1 parameter
-            if len(self.dropnprune_layers[layer_idx].remaining_channels) > 1:
+            if layer_idx not in tmp_remaining_channels:
+                tmp_remaining_channels[layer_idx] = len(
+                    self.dropnprune_layers[layer_idx].remaining_channels
+                )
+            if tmp_remaining_channels[layer_idx] > 1:
                 idx_in_layer = idx - cum_layer_sizes[layer_idx]
                 if layer_idx not in to_prune:
                     to_prune[layer_idx] = [idx_in_layer]
                 else:
                     to_prune[layer_idx].append(idx_in_layer)
                 num_pruned += 1
+                tmp_remaining_channels[layer_idx] -= 1
         for layer_idx in sorted(to_prune.keys()):
             channels_to_prune = to_prune[layer_idx]
             self.dropnprune_layers[layer_idx].prune_some_channels(
