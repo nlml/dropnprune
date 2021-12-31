@@ -152,7 +152,7 @@ class Pruner:
         self.global_step = 0
         self._num_pruned_so_far = 0
         self.lambda_multiplier = 10
-        self.lambda_pow = 2
+        self.lambda_pow = 1
 
         self.dropnprune_layers = get_modules_start_with_name(model, "DropNPrune")
         self.total_num_params = sum(
@@ -283,10 +283,10 @@ class Pruner:
             1 - self.dropnprune_layers[0].p,
             lamb=lambdas,
         )
-        self._last_scores = scores.detach().cpu()
 
         # TODO: DELETE THIS
         # scores = torch.randn([len(scores)])
+        self._last_scores = scores.detach().cpu()
         highest_score_idxs = torch.argsort(-scores)
         highest_score_idxs = highest_score_idxs[:n_channels_to_prune]
         cum_layer_sizes = torch.cumsum(
