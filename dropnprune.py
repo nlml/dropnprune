@@ -308,7 +308,6 @@ class Pruner:
         # scores = torch.randn([len(scores)])
         self._last_scores = scores.detach().cpu().numpy()
         highest_score_idxs = torch.argsort(-scores)
-        highest_score_idxs = highest_score_idxs[:n_channels_to_prune]
         cum_layer_sizes = torch.cumsum(
             torch.LongTensor(
                 [0] + [int(i.masks_history.shape[1]) for i in self.dropnprune_layers]
@@ -316,13 +315,20 @@ class Pruner:
             0,
         )
         to_prune = {}
-        for idx in highest_score_idxs:
+        num_pruned = 0
+        i = -1
+        while num_pruned < n_channels_to_prune:
+            i += 1
+            idx = highest_score_idxs[i]
             layer_idx = layer_idxs[idx].item()
-            idx_in_layer = idx - cum_layer_sizes[layer_idx]
-            if layer_idx not in to_prune:
-                to_prune[layer_idx] = [idx_in_layer]
-            else:
-                to_prune[layer_idx].append(idx_in_layer)
+            # Make sure all layers keep at least 1 parameter
+            if len(self.dropnprune_layers[layer_idx].remaining_channels) > 1:
+                idx_in_layer = idx - cum_layer_sizes[layer_idx]
+                if layer_idx not in to_prune:
+                    to_prune[layer_idx] = [idx_in_layer]
+                else:
+                    to_prune[layer_idx].append(idx_in_layer)
+                num_pruned += 1
         for layer_idx in sorted(to_prune.keys()):
             channels_to_prune = to_prune[layer_idx]
             self.dropnprune_layers[layer_idx].prune_some_channels(
