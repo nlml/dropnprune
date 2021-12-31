@@ -17,9 +17,9 @@ def complexity(net):
     print("{:<30}  {:<8}".format("Number of parameters: ", params))
 
 
-ckpt_path = "lightning_logs/prune0.2-cosineWarm5-lambda100pow2/version_0/checkpoints/epoch=193-step=75659.ckpt"
+# ckpt_path = "lightning_logs/prune0.2-cosineWarm5-lambda100pow2/version_0/checkpoints/epoch=193-step=75659.ckpt"
 # ckpt_path = "lightning_logs/resnet/version_13/checkpoints/epoch=199-step=77999.ckpt"
-# ckpt_path = "lightning_logs/prune0.4-cosineWarm5-moreFixes2/version_1/checkpoints/epoch=196-step=76829.ckpt"
+ckpt_path = "lightning_logs/prune0.4-cosineWarm5-moreFixes2/version_1/checkpoints/epoch=196-step=76829.ckpt"
 ckpt = torch.load(ckpt_path)
 state_dict = ckpt["state_dict"]
 

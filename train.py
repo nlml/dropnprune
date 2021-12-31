@@ -17,7 +17,7 @@ from dropnprune import Pruner
 seed_everything(7)
 
 
-EXP_NAME = "prune0.4-cosineWarm50-lpow1"
+EXP_NAME = "prune0.4-ratioScore-cosineWarm10-lpow1mult1"
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 PATH_DATASETS = "/home/liam/woven-cifar10-challenge-master/data"
 BATCH_SIZE = 128
@@ -70,7 +70,16 @@ class LitResnet(LightningModule):
         x, y = batch
         logits = self(x)
         loss = F.cross_entropy(logits, y, reduction="none")
-        self.pruner.step(loss)
+        with torch.no_grad():
+            if self.pruner.dropout_ratio_mode:
+                self.pruner.set_dropout_mode(False)
+                logits_nodrop = self(x)
+                loss_nodrop = F.cross_entropy(logits_nodrop, y, reduction="none")
+                loss_ratio = loss / loss_nodrop
+                self.pruner.set_dropout_mode(True)
+                self.pruner.step(loss_ratio.detach())
+            else:
+                self.pruner.step(loss.detach())
         loss = loss.mean()
         self.log("train_loss", loss)
         self.log("num_pruned_so_far", self.pruner._num_pruned_so_far)

@@ -61,13 +61,14 @@ class DropNPrune(nn.Module):
 
         self.bypass = False
         self.recording = True
+        self.enabled = True
         self.register_buffer("masks_history", torch.zeros([0, self.n_channels]))
         self.register_buffer("enabled_params", torch.ones([1, self.n_channels, 1, 1]))
 
     def _forward(self, x) -> Tensor:
         if self.bypass:
             return x
-        if self.training:
+        if self.training and self.enabled:
             with torch.no_grad():
                 shape = [x.shape[0], len(self.remaining_channels)]  # (B, C)
                 mask_small = get_dropout_mask(shape, self.p, x.device)  # (B, C)
@@ -146,18 +147,24 @@ class Pruner:
         pruning_freq: Optional[int] = None,
         prune_on_batch_idx: Optional[int] = 0,
         pct_to_prune: float = 0.4,
-        sched_cfg: dict = {"type": "cosine", "warmup": 50, "invert": False},
+        sched_cfg: dict = {"type": "cosine", "warmup": 10, "invert": False},
+        detrending_on: bool = False,
+        dropout_ratio_mode: bool = True,
+        lambda_multiplier: float = 1,
+        lambda_pow: float = 1,
     ):
-
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
         self.pct_to_prune = pct_to_prune
         self.sched_cfg = sched_cfg
+        self.detrending_on = detrending_on
+        self.dropout_ratio_mode = dropout_ratio_mode
+        self.lambda_multiplier = lambda_multiplier
+        self.lambda_pow = lambda_pow
+
         self._loss_history = []
         self.global_step = 0
         self._num_pruned_so_far = 0
-        self.lambda_multiplier = 10
-        self.lambda_pow = 1
 
         self.dropnprune_layers = get_modules_start_with_name(model, "DropNPrune")
         self.total_num_params = sum(
@@ -208,6 +215,11 @@ class Pruner:
                     l.masks_history.device
                 )
             self._loss_history = []
+
+    def set_dropout_mode(self, mode):
+        assert mode in [True, False]
+        for l in self.dropnprune_layers:
+            l.enabled = mode
 
     def pruning_scheduler(self, epoch):
         return self.f[epoch]
@@ -267,11 +279,14 @@ class Pruner:
             ]
         )
         all_losses = torch.cat(loss_history, 0)  # (N,)
-        trend = estimate_trend(all_losses, loss_timestamps)
-        # detrended_loss = all_losses - trend
-        # hi score means dropping that param out tended to cause large increases in loss
-        # lo score means dropping that param tended to have minimal impact or even help
-        pct_diff_loss_to_trend = all_losses / trend - 1
+        if self.detrending_on:
+            trend = estimate_trend(all_losses, loss_timestamps)
+            # detrended_loss = all_losses - trend
+            # hi score means dropping that param out tended to cause large increases in loss
+            # lo score means dropping that param tended to have minimal impact or even help
+            pct_diff_loss_to_trend = all_losses / trend - 1
+        else:
+            pct_diff_loss_to_trend = all_losses - all_losses.mean(0, keepdim=True)
 
         lambdas = torch.cat(
             [
