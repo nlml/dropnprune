@@ -25,10 +25,13 @@ def get_dropout_mask(shape, prob, device="cpu"):
 
 
 class ReUpScaleLayer(nn.Module):
-    def __init__(self, num_features_out):
+    def __init__(self, num_features_out, sel_dim=None):
         super().__init__()
         self.num_features_out = num_features_out
-        self.register_buffer("sel", torch.arange(self.num_features_out))
+        if sel_dim is None:
+            sel_dim = self.num_features_out
+        self.sel_dim = sel_dim
+        self.register_buffer("sel", torch.arange(self.sel_dim))
 
     def forward(self, x) -> Tensor:
         if self.sel is None:
@@ -50,7 +53,9 @@ class DropNPrune(nn.Module):
         self.remaining_channels = list(range(self.n_channels))
         self.required_output_channels = required_output_channels
         if self.required_output_channels is not None:
-            self.reupscale_layer = ReUpScaleLayer(self.required_output_channels)
+            self.reupscale_layer = ReUpScaleLayer(
+                self.required_output_channels, n_channels
+            )
 
         self.lamb = 64 / n_channels
 

@@ -6,6 +6,8 @@ import torchvision.datasets as datasets
 from torch import nn
 from dropnprune import get_modules_start_with_name
 
+torch.autograd.set_grad_enabled(False)
+
 
 def complexity(net):
     macs, params = get_model_complexity_info(
@@ -35,7 +37,7 @@ model = model.eval().cpu()
 complexity(model)
 torch.save(model.state_dict(), "pre.pth")
 dummy_input = torch.zeros([1, 3, 32, 32])
-torch.jit.save(torch.jit.trace(model, dummy_input), "pre.trace")
+# torch.jit.save(torch.jit.trace(model, dummy_input), "pre.trace")
 print(model(dummy_input))
 
 int_planes_all = [
@@ -71,7 +73,7 @@ for layer in ["layer1.", "layer2.", "layer3."]:
             k = layer + f"{i}.{s}"
             state_dict[k] = state_dict[k][sel]
         for s in [
-            # "dropnprune1.enabled_params",
+            "dropnprune1.enabled_params",
             "conv2.weight",
         ]:
             k = layer + f"{i}.{s}"
@@ -87,11 +89,11 @@ for layer in ["layer1.", "layer2.", "layer3."]:
         ]:
             k = layer + f"{i}.{s}"
             state_dict[k] = state_dict[k][sel]
-        # k = layer + f"{i}.dropnprune2.enabled_params"
-        # where = torch.where(state_dict[k][0, :, 0, 0])[0]
-        # state_dict[k] = state_dict[k][:, sel]
-        # k = layer + f"{i}.dropnprune2.reupscale_layer.sel"
-        # state_dict[k] = where
+        k = layer + f"{i}.dropnprune2.enabled_params"
+        where = torch.where(state_dict[k][0, :, 0, 0])[0]
+        state_dict[k] = state_dict[k][:, sel]
+        k = layer + f"{i}.dropnprune2.reupscale_layer.sel"
+        state_dict[k] = where
 model = model.eval().cpu()
 model.load_state_dict(state_dict, strict=False)
 
@@ -107,7 +109,7 @@ dummy_input = torch.zeros([1, 3, 32, 32])
 print(model(dummy_input))
 
 torch.save(model.state_dict(), "post.pth")
-torch.jit.save(torch.jit.trace(model, dummy_input), "post.trace")
+# torch.jit.save(torch.jit.trace(model, dummy_input), "post.trace")
 
 
 val_loader = torch.utils.data.DataLoader(
@@ -121,5 +123,5 @@ criterion = nn.CrossEntropyLoss().cuda()
 model = model.cuda()
 # evaluate on validation set
 m = LitResnet(create_model_fn=lambda: model)
-trainer = Trainer(gpus=1)
+trainer = Trainer(gpus=1, enable_checkpointing=False, logger=False)
 trainer.validate(m, dataloaders=[val_loader])
