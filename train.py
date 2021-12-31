@@ -60,7 +60,8 @@ class LitResnet(LightningModule):
         return self.model(x)
 
     def training_epoch_end(self, outputs):
-        if hasattr(self.pruner, "_last_scores"):
+        if 0 and hasattr(self.pruner, "_last_scores"):
+            print(self.pruner._last_scores.shape)
             self.logger.experiment.add_histogram(
                 "scores", self.pruner._last_scores, self.current_epoch
             )
@@ -153,5 +154,5 @@ if __name__ == "__main__":
         num_sanity_val_steps=0,
         enable_checkpointing=True,
     )
-
+    print(EXP_NAME)
     trainer.fit(model, trainloader, testloader)
