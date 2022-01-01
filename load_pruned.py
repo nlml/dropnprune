@@ -26,11 +26,11 @@ def complexity(net):
 # ckpt_path = "lightning_logs/prune0.3-cosineWarm50-lpow1mult100/version_0/checkpoints/epoch=199-step=77999.ckpt"
 # ckpt_path = "lightning_logs/prune0.5-cosineWarm50fix-lpow1mult100-nonRatio/version_0/checkpoints/epoch=199-step=77999.ckpt"
 ckpt_path = "lightning_logs/prune0.4-cosineWarm50fix-lpow1mult100-drop0.05/version_0/checkpoints/epoch=199-step=77999.ckpt"
+ckpt_path = "lightning_logs/prune0.4-cosineWarm50fix-lpow1mult100-drop0.01-negScores/version_0/checkpoints/epoch=199-step=77999.ckpt"
 ckpt = torch.load(ckpt_path)
 state_dict = ckpt["state_dict"]
 
 for k in list(state_dict.keys()):
-    print(k)
     if "masks_history" in k:
         del state_dict[k]
         continue
@@ -105,6 +105,9 @@ model.load_state_dict(state_dict, strict=False)
 
 reups = get_modules_start_with_name(model, "ReUp")
 dropnprunes = get_modules_start_with_name(model, "DropNPrune")
+
+print([(i, l.enabled_params.sum().item()) for i, l in enumerate(dropnprunes)])
+
 for l in dropnprunes:
     l.bypass = True
 for r, s in zip(reups, sel2s):
