@@ -150,7 +150,7 @@ class Pruner:
         sched_cfg: dict = {"type": "cosine", "warmup": 25, "finish": 0},
         detrending_on: bool = False,
         dropout_ratio_mode: bool = True,
-        lambda_multiplier: float = 100,
+        lambda_multiplier: float = 1,
         lambda_pow: float = 1,
     ):
         self.pruning_freq = pruning_freq
