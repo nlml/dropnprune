@@ -147,10 +147,10 @@ class Pruner:
         pruning_freq: Optional[int] = None,
         prune_on_batch_idx: Optional[int] = 0,
         pct_to_prune: float = 0.4,
-        sched_cfg: dict = {"type": "cosine", "warmup": 100, "finish": 0},
+        sched_cfg: dict = {"type": "cosine", "warmup": 50, "finish": 0},
         detrending_on: bool = False,
         dropout_ratio_mode: bool = True,
-        lambda_multiplier: float = 1,
+        lambda_multiplier: float = 100,
         lambda_pow: float = 1,
     ):
         self.pruning_freq = pruning_freq
@@ -308,6 +308,7 @@ class Pruner:
         )
 
         # TODO: DELETE THIS
+        scores = -scores
         # scores = torch.randn([len(scores)])
         self._last_scores = scores.detach().cpu().numpy()
         highest_score_idxs = torch.argsort(-scores)
