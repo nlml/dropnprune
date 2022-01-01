@@ -22,7 +22,8 @@ def complexity(net):
 # ckpt_path = "lightning_logs/prune0.4-cosineWarm5-moreFixes2/version_1/checkpoints/epoch=196-step=76829.ckpt"
 # ckpt_path = "lightning_logs/prune0.4-ratioScore-cosineWarm10-lpow1mult1/version_0/checkpoints/epoch=199-step=77999.ckpt"
 # ckpt_path = "lightning_logs/prune0.4-ratioScore-c osineWarm10-lpow1mult1-keep1fix/version_0/checkpoints/epoch=199-step=77999.ckpt"
-ckpt_path = "lightning_logs/prune0.4-cosineWarm50-lpow1/version_0/checkpoints/epoch=199-step=77999.ckpt"
+# ckpt_path = "lightning_logs/prune0.4-cosineWarm50-lpow1/version_0/checkpoints/epoch=199-step=77999.ckpt"
+ckpt_path = "lightning_logs/prune0.3-cosineWarm50-lpow1mult100/version_0/checkpoints/epoch=199-step=77999.ckpt"
 ckpt = torch.load(ckpt_path)
 state_dict = ckpt["state_dict"]
 
