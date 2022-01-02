@@ -152,7 +152,7 @@ class Pruner:
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
-        prune_every_epoch: Optional[int] = 5,
+        prune_every_epoch: Optional[int] = 10,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
