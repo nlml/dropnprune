@@ -146,13 +146,13 @@ class Pruner:
         model,
         pruning_freq: Optional[int] = None,
         prune_on_batch_idx: Optional[int] = 0,
-        pct_to_prune: float = 0.4,
+        pct_to_prune: float = 0.5,
         sched_cfg: dict = {"type": "cosine", "warmup": 50, "finish": 0},
         detrending_on: bool = True,
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
-        prune_every_epoch: Optional[int] = 20,
+        prune_every_epoch: Optional[int] = 5,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
