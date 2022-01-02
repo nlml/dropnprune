@@ -152,6 +152,7 @@ class Pruner:
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
+        prune_every_epoch: Optional[int] = 3,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
@@ -161,6 +162,7 @@ class Pruner:
         self.dropout_ratio_mode = dropout_ratio_mode
         self.lambda_multiplier = lambda_multiplier
         self.lambda_pow = lambda_pow
+        self.prune_every_epoch = prune_every_epoch
 
         self._loss_history = []
         self.global_step = 0
@@ -228,6 +230,9 @@ class Pruner:
         return self.f[epoch]
 
     def calc_num_to_prune(self, batch_idx, epoch):
+        if self.prune_every_epoch is not None:
+            if (epoch + 1) % self.prune_every_epoch != 0:
+                return None
         if self.prune_on_batch_idx is not None:
             if self.prune_on_batch_idx != batch_idx:
                 return None
@@ -308,7 +313,7 @@ class Pruner:
         )
 
         # TODO: DELETE THIS
-        scores = -scores
+        # scores = -scores
         # scores = torch.randn([len(scores)])
         self._last_scores = scores.detach().cpu().numpy()
         highest_score_idxs = torch.argsort(-scores)
