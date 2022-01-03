@@ -46,12 +46,15 @@ class ReUpScaleLayer(nn.Module):
 
 
 class DropNPrune(nn.Module):
-    def __init__(self, p, n_channels, required_output_channels=None):
+    def __init__(
+        self, p, n_channels, required_output_channels=None, rescale_post_dropout=False
+    ):
         super().__init__()
         self.p = p
         self.n_channels = n_channels
         self.remaining_channels = list(range(self.n_channels))
         self.required_output_channels = required_output_channels
+        self.rescale_post_dropout = rescale_post_dropout
         if self.required_output_channels is not None:
             self.reupscale_layer = ReUpScaleLayer(
                 self.required_output_channels, n_channels
@@ -77,7 +80,9 @@ class DropNPrune(nn.Module):
                 mask[:, rem] *= mask_small.unsqueeze(-1).unsqueeze(-1)
                 if self.recording:
                     self.masks_history = torch.cat([self.masks_history, mask_small], 0)
-            x = x * mask * (1.0 / (1 - self.p))  # (B, C, 1, 1)
+            x = x * mask
+            if self.rescale_post_dropout:
+                x = x * (1.0 / (1 - self.p))  # (B, C, 1, 1)
         return x * self.enabled_params
 
     def forward(self, x) -> Tensor:
