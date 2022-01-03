@@ -47,7 +47,7 @@ class ReUpScaleLayer(nn.Module):
 
 class DropNPrune(nn.Module):
     def __init__(
-        self, p, n_channels, required_output_channels=None, rescale_post_dropout=False
+        self, p, n_channels, required_output_channels=None, rescale_post_dropout=True
     ):
         super().__init__()
         self.p = p
@@ -152,7 +152,7 @@ class Pruner:
         pruning_freq: Optional[int] = None,
         prune_on_batch_idx: Optional[int] = 0,
         pct_to_prune: float = 0.4,
-        sched_cfg: dict = {"type": "cosine", "warmup": 50, "finish": 0},
+        sched_cfg: dict = {"type": "cosine", "warmup": 0, "finish": 0},
         detrending_on: bool = True,
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
