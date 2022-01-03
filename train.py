@@ -14,9 +14,9 @@ from torchmetrics.functional import accuracy
 from resnet import resnet32
 from dropnprune import Pruner
 
-seed_everything(2)
+seed_everything(1)
 
-EXP_NAME = "prune0.4-cosineWarm50fix-lmult0-drop0.01-every5-noRescale-seed2"
+EXP_NAME = "prune0.4-cosineWarm50fix-lmult0-drop0.01-every5-noRescale-seed1"
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 PATH_DATASETS = "/home/liam/woven-cifar10-challenge-master/data"
 BATCH_SIZE = 128
