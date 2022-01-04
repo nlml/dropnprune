@@ -318,8 +318,9 @@ class Pruner:
         )
 
         # TODO: DELETE THIS
-        scores = -scores
+        # scores = -scores
         # scores = torch.randn([len(scores)])
+        scores = -torch.abs(scores)
         self._last_scores = scores.detach().cpu().numpy()
         highest_score_idxs = torch.argsort(-scores)
         cum_layer_sizes = torch.cumsum(
