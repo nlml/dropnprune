@@ -158,6 +158,7 @@ class Pruner:
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
         prune_every_epoch: Optional[int] = 5,
+        variance_estimate_beta: bool = False,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
@@ -309,18 +310,36 @@ class Pruner:
                 for l in self.dropnprune_layers
             ]
         )
-        lambdas = (lambdas ** self.lambda_pow) * self.lambda_multiplier
+        if self.lambda_multiplier == 0:
+            lambdas = None
+        else:
+            lambdas = (lambdas ** self.lambda_pow) * self.lambda_multiplier
         scores = linreg_torch(
             all_mask_histories,
             pct_diff_loss_to_trend,
-            1 - self.dropnprune_layers[0].p,
+            None if self.variance_estimate_beta else 1 - self.dropnprune_layers[0].p,
             lamb=lambdas,
         )
 
         # TODO: DELETE THIS
         # scores = -scores
         # scores = torch.randn([len(scores)])
-        scores = -torch.abs(scores)
+        # scores = -torch.abs(scores)
+        save_path = f"lightning_logs/{self.logger.log_dir}/version_{self.logger.version}/{self.current_epoch:04d}.pth"
+        torch.save(
+            (
+                scores,
+                loss_history,
+                all_mask_histories,
+                pct_diff_loss_to_trend,
+                lambdas,
+                self.lambda_pow,
+                self.lambda_multiplier,
+            ),
+            save_path,
+        )
+        print(f"Saved {save_path}")
+
         self._last_scores = scores.detach().cpu().numpy()
         highest_score_idxs = torch.argsort(-scores)
         cum_layer_sizes = torch.cumsum(
