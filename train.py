@@ -16,7 +16,7 @@ from dropnprune import Pruner
 
 seed_everything(1)
 
-EXP_NAME = "prune0.4-warm50-drop0.01-every5-noVarEst-seed1"
+EXP_NAME = "prune0.4-warm50-drop0.01-every5-varEst-seed1"
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 PATH_DATASETS = "/home/liam/woven-cifar10-challenge-master/data"
 BATCH_SIZE = 128
@@ -60,7 +60,6 @@ class LitResnet(LightningModule):
 
     def training_epoch_end(self, outputs):
         if hasattr(self.pruner, "_last_scores"):
-            print(self.pruner._last_scores.shape)
             self.logger.experiment.add_histogram(
                 "scores", self.pruner._last_scores, self.current_epoch
             )
