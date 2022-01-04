@@ -1,3 +1,4 @@
+import numpy as np
 import time
 import torch
 from torch import nn
@@ -5,6 +6,14 @@ from typing import Optional
 
 from torch.autograd.grad_mode import F
 from torch import Tensor
+
+
+def moving_average(a, n=3):
+    if n == 1:
+        return a
+    ret = torch.cumsum(a.float(), dim=0)
+    ret[n:] = ret[n:] - ret[:-n]
+    return ret[n - 1 :] / n
 
 
 def get_modules_start_with_name(model, name):
@@ -107,7 +116,7 @@ class DropNPrune(nn.Module):
         return d
 
 
-def linreg_torch(x, y, p=None, lamb=None):
+def linreg_torch(x, y, p=None, lamb=None, return_preds=False):
     # betas = (X'X)^1 X'y
     N, D = x.shape[0], x.shape[1]
     if p is not None:
@@ -126,6 +135,9 @@ def linreg_torch(x, y, p=None, lamb=None):
             xtransx = x.T.matmul(x) + lamb * torch.eye(D, device=x.device)
             betas = torch.linalg.inv(x).matmul(x.T)
     betas = betas.matmul(y)
+    if return_preds:
+        preds = x.matmul(betas).squeeze()
+        return betas, preds
     return betas
 
 
@@ -158,7 +170,8 @@ class Pruner:
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
         prune_every_epoch: Optional[int] = 5,
-        variance_estimate_beta: bool = True,
+        variance_estimate_beta: bool = False,
+        ma: Optional[int] = 128 * 50,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
@@ -170,6 +183,7 @@ class Pruner:
         self.lambda_pow = lambda_pow
         self.prune_every_epoch = prune_every_epoch
         self.variance_estimate_beta = variance_estimate_beta
+        self.ma = ma
 
         self._loss_history = []
         self.global_step = 0
@@ -295,11 +309,34 @@ class Pruner:
         )
         all_losses = torch.cat(loss_history, 0)  # (N,)
         if self.detrending_on:
-            trend = estimate_trend(all_losses, loss_timestamps)
-            # detrended_loss = all_losses - trend
-            # hi score means dropping that param out tended to cause large increases in loss
-            # lo score means dropping that param tended to have minimal impact or even help
-            pct_diff_loss_to_trend = all_losses / trend - 1
+            if self.ma is not None:
+                trend = moving_average(all_losses, self.ma)
+                pct_diff_loss_to_trend = (
+                    all_losses[self.ma // 2 : -self.ma // 2 + 1] - trend
+                )
+                pct_diff_loss_to_trend = torch.clamp(
+                    pct_diff_loss_to_trend,
+                    *(
+                        torch.quantile(
+                            pct_diff_loss_to_trend,
+                            torch.FloatTensor([0.01, 0.99]).to(
+                                pct_diff_loss_to_trend.device
+                            ),
+                        )
+                        .detach()
+                        .cpu()
+                        .numpy()
+                    ),
+                )
+                all_mask_histories = all_mask_histories[
+                    self.ma // 2 : -self.ma // 2 + 1
+                ]
+            else:
+                trend = estimate_trend(all_losses, loss_timestamps)
+                # detrended_loss = all_losses - trend
+                # hi score means dropping that param out tended to cause large increases in loss
+                # lo score means dropping that param tended to have minimal impact or even help
+                pct_diff_loss_to_trend = all_losses / trend - 1
         else:
             pct_diff_loss_to_trend = all_losses - all_losses.mean(0, keepdim=True)
 
@@ -326,14 +363,14 @@ class Pruner:
         # scores = -scores
         # scores = torch.randn([len(scores)])
         # scores = -torch.abs(scores)
-        if save_path is not None:
+        if 0:  # save_path is not None:
             torch.save(
                 (
                     scores,
                     loss_history,
-                    all_mask_histories,
-                    pct_diff_loss_to_trend,
-                    lambdas,
+                    # all_mask_histories,
+                    # pct_diff_loss_to_trend,
+                    # lambdas,
                     self.lambda_pow,
                     self.lambda_multiplier,
                 ),
