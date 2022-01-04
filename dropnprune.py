@@ -171,7 +171,7 @@ class Pruner:
         lambda_pow: float = 1,
         prune_every_epoch: Optional[int] = 5,
         variance_estimate_beta: bool = False,
-        ma: Optional[int] = 128 * 20,
+        ma: Optional[int] = 128 * 50,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
