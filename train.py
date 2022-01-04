@@ -66,7 +66,8 @@ class LitResnet(LightningModule):
             )
 
     def training_step(self, batch, batch_idx):
-        self.pruner.maybe_run_pruning(batch_idx, self.current_epoch)
+        save_path = f"lightning_logs/{self.logger.log_dir}/version_{self.logger.version}/{self.current_epoch:04d}.pth"
+        self.pruner.maybe_run_pruning(batch_idx, self.current_epoch, save_path)
         x, y = batch
         logits = self(x)
         loss = F.cross_entropy(logits, y, reduction="none")

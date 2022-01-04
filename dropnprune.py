@@ -259,7 +259,7 @@ class Pruner:
             )
         )
 
-    def maybe_run_pruning(self, batch_idx, epoch):
+    def maybe_run_pruning(self, batch_idx, epoch, save_path=None):
         ran_pruning = False
         num_to_prune = self.calc_num_to_prune(batch_idx, epoch)
         if num_to_prune is not None:
@@ -267,12 +267,12 @@ class Pruner:
                 if len([i.masks_history for i in self.dropnprune_layers][0]):
                     if len(self._loss_history):
                         print("num_to_prune", num_to_prune)
-                        self.run_pruning(self._loss_history, num_to_prune)
+                        self.run_pruning(self._loss_history, num_to_prune, save_path)
                         ran_pruning = True
             self.clean_up()
         return ran_pruning
 
-    def run_pruning(self, loss_history, n_channels_to_prune):
+    def run_pruning(self, loss_history, n_channels_to_prune, save_path=None):
         if n_channels_to_prune <= 0:
             return None
         print("Running pruning...")
@@ -326,20 +326,20 @@ class Pruner:
         # scores = -scores
         # scores = torch.randn([len(scores)])
         # scores = -torch.abs(scores)
-        save_path = f"lightning_logs/{self.logger.log_dir}/version_{self.logger.version}/{self.current_epoch:04d}.pth"
-        torch.save(
-            (
-                scores,
-                loss_history,
-                all_mask_histories,
-                pct_diff_loss_to_trend,
-                lambdas,
-                self.lambda_pow,
-                self.lambda_multiplier,
-            ),
-            save_path,
-        )
-        print(f"Saved {save_path}")
+        if save_path is not None:
+            torch.save(
+                (
+                    scores,
+                    loss_history,
+                    all_mask_histories,
+                    pct_diff_loss_to_trend,
+                    lambdas,
+                    self.lambda_pow,
+                    self.lambda_multiplier,
+                ),
+                save_path,
+            )
+            print(f"Saved {save_path}")
 
         self._last_scores = scores.detach().cpu().numpy()
         highest_score_idxs = torch.argsort(-scores)
