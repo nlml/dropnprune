@@ -16,7 +16,7 @@ from dropnprune import Pruner
 
 seed_everything(1)
 
-EXP_NAME = "prune0.4-warm50-drop0.01-every5-varEst-seed1"
+EXP_NAME = "prune0.4-warm50-drop0.01-every5-noVarEst-seed1"
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 PATH_DATASETS = "/home/liam/woven-cifar10-challenge-master/data"
 BATCH_SIZE = 128
@@ -66,7 +66,7 @@ class LitResnet(LightningModule):
             )
 
     def training_step(self, batch, batch_idx):
-        save_path = f"lightning_logs/{self.logger.log_dir}/version_{self.logger.version}/{self.current_epoch:04d}.pth"
+        save_path = f"{self.logger.log_dir}/version_{self.logger.version}/{self.current_epoch:04d}.pth"
         self.pruner.maybe_run_pruning(batch_idx, self.current_epoch, save_path)
         x, y = batch
         logits = self(x)
