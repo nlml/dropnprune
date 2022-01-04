@@ -169,6 +169,7 @@ class Pruner:
         self.lambda_multiplier = lambda_multiplier
         self.lambda_pow = lambda_pow
         self.prune_every_epoch = prune_every_epoch
+        self.variance_estimate_beta = variance_estimate_beta
 
         self._loss_history = []
         self.global_step = 0
