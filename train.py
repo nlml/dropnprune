@@ -66,7 +66,7 @@ class LitResnet(LightningModule):
             )
 
     def training_step(self, batch, batch_idx):
-        save_path = f"{self.logger.log_dir}/version_{self.logger.version}/{self.current_epoch:04d}.pth"
+        save_path = f"{self.logger.log_dir}/{self.current_epoch:04d}.pth"
         self.pruner.maybe_run_pruning(batch_idx, self.current_epoch, save_path)
         x, y = batch
         logits = self(x)
