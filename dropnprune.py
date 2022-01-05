@@ -116,24 +116,31 @@ class DropNPrune(nn.Module):
         return d
 
 
-def linreg_torch(x, y, p=None, lamb=None, return_preds=False):
+def linreg_torch(x, y, p=None, lamb=None, return_preds=False, return_xtxinv=False):
     # betas = (X'X)^1 X'y
     N, D = x.shape[0], x.shape[1]
     if p is not None:
         # p should be probability entry == 1 (ie prob of not dropping out)
         c = p ** 2
-        xtransx = torch.eye(D, device=x.device) * (p - c)  # diagonal = p
-        xtransx += c  # off-diagonals = p ** 2
-        xtransx *= N
+        xtx = torch.eye(D, device=x.device) * (p - c)  # diagonal = p
+        xtx += c  # off-diagonals = p ** 2
+        xtx *= N
         if lamb is not None:
-            xtransx += lamb * torch.eye(D, device=x.device)
-        betas = torch.linalg.inv(xtransx).matmul(x.T)
+            xtx += lamb * torch.eye(D, device=x.device)
+        xtxinv = torch.linalg.inv(xtx)
+        betas = xtxinv.matmul(x.T)
     else:
         if lamb is None:
-            betas = torch.linalg.pinv(x)
+            if return_xtxinv:
+                xtx = x.T.matmul(x)
+                xtxinv = torch.linalg.inv(xtx)
+                betas = xtxinv.matmul(x.T)
+            else:
+                betas = torch.linalg.pinv(x)
         else:
-            xtransx = x.T.matmul(x) + lamb * torch.eye(D, device=x.device)
-            betas = torch.linalg.inv(x).matmul(x.T)
+            xtx = x.T.matmul(x) + lamb * torch.eye(D, device=x.device)
+            xtxinv = torch.linalg.inv(xtx)
+            betas = xtxinv.matmul(x.T)
     betas = betas.matmul(y)
     if return_preds:
         preds = x.matmul(betas).squeeze()
@@ -172,6 +179,7 @@ class Pruner:
         prune_every_epoch: Optional[int] = 1,
         variance_estimate_beta: bool = False,
         ma: Optional[int] = 128 * 50,
+        div_scores_by_var: bool = True,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
@@ -184,6 +192,7 @@ class Pruner:
         self.prune_every_epoch = prune_every_epoch
         self.variance_estimate_beta = variance_estimate_beta
         self.ma = ma
+        self.div_scores_by_var = div_scores_by_var
 
         self._loss_history = []
         self.global_step = 0
@@ -274,16 +283,19 @@ class Pruner:
         )
 
     def maybe_run_pruning(self, batch_idx, epoch, save_path=None):
-        ran_pruning = False
-        num_to_prune = self.calc_num_to_prune(batch_idx, epoch)
-        if num_to_prune is not None:
-            if num_to_prune > 0:
-                if len([i.masks_history for i in self.dropnprune_layers][0]):
-                    if len(self._loss_history):
-                        print("num_to_prune", num_to_prune)
-                        self.run_pruning(self._loss_history, num_to_prune, save_path)
-                        ran_pruning = True
-            self.clean_up()
+        with torch.no_grad():
+            ran_pruning = False
+            num_to_prune = self.calc_num_to_prune(batch_idx, epoch)
+            if num_to_prune is not None:
+                if num_to_prune > 0:
+                    if len([i.masks_history for i in self.dropnprune_layers][0]):
+                        if len(self._loss_history):
+                            print("num_to_prune", num_to_prune)
+                            self.run_pruning(
+                                self._loss_history, num_to_prune, save_path
+                            )
+                            ran_pruning = True
+                self.clean_up()
         return ran_pruning
 
     def run_pruning(self, loss_history, n_channels_to_prune, save_path=None):
@@ -352,12 +364,22 @@ class Pruner:
             lambdas = None
         else:
             lambdas = (lambdas ** self.lambda_pow) * self.lambda_multiplier
-        scores = linreg_torch(
+        scores, preds, xtxinv = linreg_torch(
             all_mask_histories,
             pct_diff_loss_to_trend,
             None if self.variance_estimate_beta else 1 - self.dropnprune_layers[0].p,
             lamb=lambdas,
+            return_preds=True,
+            return_xtxinv=self.div_scores_by_var,
         )
+        if self.div_scores_by_var:
+            n = pct_diff_loss_to_trend.shape[0]
+            k = scores.shape[0]
+            sigmasq = ((pct_diff_loss_to_trend - preds) ** 2).sum() / (n - k)
+            variance_of_scores = sigmasq * xtxinv
+            variance_of_scores = torch.diag(variance_of_scores)
+            # https://stats.stackexchange.com/a/266889/112095
+            scores = scores / variance_of_scores
 
         # TODO: DELETE THIS
         # scores = -scores
