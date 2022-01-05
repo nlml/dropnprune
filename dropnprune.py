@@ -144,7 +144,11 @@ def linreg_torch(x, y, p=None, lamb=None, return_preds=False, return_xtxinv=Fals
     betas = betas.matmul(y)
     if return_preds:
         preds = x.matmul(betas).squeeze()
+        if return_xtxinv:
+            return betas, preds, xtxinv
         return betas, preds
+    if return_xtxinv:
+        return betas, xtxinv
     return betas
 
 
@@ -364,7 +368,7 @@ class Pruner:
             lambdas = None
         else:
             lambdas = (lambdas ** self.lambda_pow) * self.lambda_multiplier
-        scores, preds, xtxinv = linreg_torch(
+        outs = linreg_torch(
             all_mask_histories,
             pct_diff_loss_to_trend,
             None if self.variance_estimate_beta else 1 - self.dropnprune_layers[0].p,
@@ -372,7 +376,10 @@ class Pruner:
             return_preds=True,
             return_xtxinv=self.div_scores_by_var,
         )
-        if self.div_scores_by_var:
+        if not self.div_scores_by_var:
+            scores, preds = outs
+        else:
+            scores, preds, xtxinv = outs
             n = pct_diff_loss_to_trend.shape[0]
             k = scores.shape[0]
             sigmasq = ((pct_diff_loss_to_trend - preds) ** 2).sum() / (n - k)
