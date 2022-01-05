@@ -183,7 +183,7 @@ class Pruner:
         prune_every_epoch: Optional[int] = 1,
         variance_estimate_beta: bool = False,
         ma: Optional[int] = 128 * 50,
-        div_scores_by_var: bool = True,
+        div_scores_by_var: bool = False,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
