@@ -7,8 +7,6 @@ import torchvision
 from pytorch_lightning import LightningModule, Trainer, seed_everything
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
-from torch.optim.lr_scheduler import OneCycleLR
-from torch.optim.swa_utils import AveragedModel, update_bn
 from torchmetrics.functional import accuracy
 
 from resnet import resnet32
@@ -16,7 +14,7 @@ from dropnprune import Pruner
 
 seed_everything(3)
 
-EXP_NAME = "prune0.4-warm0-drop0.05-every1-ma50-seed3"
+EXP_NAME = "prune0.4-warm0-drop0.005-every1-ma50-seed3"
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 PATH_DATASETS = "/home/liam/woven-cifar10-challenge-master/data"
 BATCH_SIZE = 128
