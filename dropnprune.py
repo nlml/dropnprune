@@ -175,7 +175,7 @@ class Pruner:
         pruning_freq: Optional[int] = None,
         prune_on_batch_idx: Optional[int] = 0,
         pct_to_prune: float = 0.4,
-        sched_cfg: dict = {"type": "cosine", "warmup": 0, "finish": 180},
+        sched_cfg: dict = {"type": "cosine", "warmup": 0, "finish": 190},
         detrending_on: bool = True,
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
