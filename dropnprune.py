@@ -180,7 +180,7 @@ class Pruner:
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
-        prune_every_epoch: Optional[int] = 1,
+        prune_every_epoch: Optional[int] = 5,
         variance_estimate_beta: bool = False,
         ma: Optional[int] = 128 * 50,
         div_scores_by_var: bool = False,
