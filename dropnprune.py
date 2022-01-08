@@ -152,18 +152,27 @@ def linreg_torch(x, y, p=None, lamb=None, return_preds=False, return_xtxinv=Fals
     return betas
 
 
-def estimate_trend(y, x):
+def estimate_trend(y, x, just_linear=False):
     with torch.no_grad():
         x = x.float()
-        x = torch.stack(
-            [
-                torch.ones([x.shape[0]], device=x.device),
-                x,
-                torch.log(x),
-                torch.sqrt(x),
-            ],
-            1,
-        )
+        if just_linear:
+            x = torch.stack(
+                [
+                    torch.ones([x.shape[0]], device=x.device),
+                    x,
+                ],
+                1,
+            )
+        else:
+            x = torch.stack(
+                [
+                    torch.ones([x.shape[0]], device=x.device),
+                    x,
+                    torch.log(x),
+                    torch.sqrt(x),
+                ],
+                1,
+            )
         betas = linreg_torch(x, y)
     return x.matmul(betas)
 
@@ -180,10 +189,12 @@ class Pruner:
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
-        prune_every_epoch: Optional[int] = 10,
+        prune_every_epoch: Optional[int] = 1,
         variance_estimate_beta: bool = False,
         ma: Optional[int] = 128 * 50,
         div_scores_by_var: bool = False,
+        rm_trend_pre_ma: bool = True,
+        exp_loss: bool = True,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
@@ -197,6 +208,8 @@ class Pruner:
         self.variance_estimate_beta = variance_estimate_beta
         self.ma = ma
         self.div_scores_by_var = div_scores_by_var
+        self.rm_trend_pre_ma = rm_trend_pre_ma
+        self.exp_loss = exp_loss
 
         self._loss_history = []
         self.global_step = 0
@@ -324,8 +337,15 @@ class Pruner:
             ]
         )
         all_losses = torch.cat(loss_history, 0)  # (N,)
+        if self.exp_loss:
+            all_losses = -torch.exp(-all_losses)
         if self.detrending_on:
             if self.ma is not None:
+                # Remove linear trend
+                if self.rm_trend_pre_ma:
+                    all_losses = all_losses - estimate_trend(
+                        all_losses, loss_timestamps, just_linear=True
+                    )
                 trend = moving_average(all_losses, self.ma)
                 pct_diff_loss_to_trend = (
                     all_losses[self.ma // 2 : -self.ma // 2 + 1] - trend
