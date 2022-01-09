@@ -250,6 +250,7 @@ class Pruner:
         self._loss_history = []
         self.global_step = 0
         self._num_pruned_so_far = 0
+        self._num_pruned_this_round = 0
 
         self.dropnprune_layers = get_modules_start_with_name(model, "DropNPrune")
         self.total_num_params = sum(
