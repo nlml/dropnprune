@@ -177,6 +177,40 @@ def estimate_trend(y, x, just_linear=False):
     return x.matmul(betas)
 
 
+def calc_scores(bsize, all_mask_histories, all_losses, p, ma):
+    device = all_losses.device
+    # all_losses = torch.cat(loss_history, 0)  # (N,)
+    all_losses = -torch.exp(-all_losses)
+
+    # Calc a simple linear trend over the training steps (batches) then subtract it
+    # from the per-sample loss
+    al = all_losses.view(-1, bsize).mean(1)
+    trend_al = estimate_trend(
+        al, torch.arange(1, len(al) + 1, device=device), just_linear=True
+    )
+    trend_all_losses = trend_al.unsqueeze(1).repeat([1, bsize]).view(-1)
+    all_losses = all_losses - trend_all_losses
+
+    if ma:
+        # Calc a moving average over the training steps then subtract from per-sample loss
+        al = all_losses.view(-1, bsize).mean(1)
+        # mirror padding for centered moving average:
+        alx = torch.cat(
+            [
+                al[: ma // 2][torch.arange(ma // 2 - 1, -1, -1)],
+                al,
+                al[-ma // 2 - 1 :][torch.arange(ma // 2 - 2, -1, -1)],
+            ]
+        )
+        trend_al = moving_average(alx, ma)
+        trend_all_losses = trend_al.unsqueeze(1).repeat([1, bsize]).view(-1)
+        all_losses = all_losses - trend_all_losses
+    all_losses -= all_losses.mean()
+
+    betas = linreg_torch(all_mask_histories, all_losses, p)
+    return betas
+
+
 class Pruner:
     def __init__(
         self,
@@ -184,17 +218,18 @@ class Pruner:
         pruning_freq: Optional[int] = None,
         prune_on_batch_idx: Optional[int] = 0,
         pct_to_prune: float = 0.4,
-        sched_cfg: dict = {"type": "cosine", "warmup": 50, "finish": 0},
+        sched_cfg: dict = {"type": "cosine", "warmup": 0, "finish": 0},
         detrending_on: bool = True,
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
         prune_every_epoch: Optional[int] = 1,
         variance_estimate_beta: bool = False,
-        ma: Optional[int] = 128 * 50,
+        ma: Optional[int] = 50,
         div_scores_by_var: bool = False,
         rm_trend_pre_ma: bool = True,
         exp_loss: bool = True,
+        score_threshold: float = 0.015,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
@@ -210,6 +245,7 @@ class Pruner:
         self.div_scores_by_var = div_scores_by_var
         self.rm_trend_pre_ma = rm_trend_pre_ma
         self.exp_loss = exp_loss
+        self.score_threshold = score_threshold
 
         self._loss_history = []
         self.global_step = 0
@@ -329,84 +365,15 @@ class Pruner:
         )
         # all_mask_histories: (N, featuresLayeri * L layers)
         all_mask_histories = torch.cat(all_mask_histories, 1)
-        # loss_timestamps = [1, 1, 1, ..., 2, 2, 2, ..., ..., pruning_freq, pruning_freq, ...]
-        loss_timestamps = torch.cat(
-            [
-                torch.full([i.shape[0]], idx + 1, device=loss_history[0].device)
-                for idx, i in enumerate(loss_history)
-            ]
-        )
+        bsize = loss_history[0].shape[0]
         all_losses = torch.cat(loss_history, 0)  # (N,)
-        if self.exp_loss:
-            all_losses = -torch.exp(-all_losses)
-        if self.detrending_on:
-            if self.ma is not None:
-                # Remove linear trend
-                if self.rm_trend_pre_ma:
-                    all_losses = all_losses - estimate_trend(
-                        all_losses, loss_timestamps, just_linear=True
-                    )
-                trend = moving_average(all_losses, self.ma)
-                pct_diff_loss_to_trend = (
-                    all_losses[self.ma // 2 : -self.ma // 2 + 1] - trend
-                )
-                pct_diff_loss_to_trend = torch.clamp(
-                    pct_diff_loss_to_trend,
-                    *(
-                        torch.quantile(
-                            pct_diff_loss_to_trend,
-                            torch.FloatTensor([0.01, 0.99]).to(
-                                pct_diff_loss_to_trend.device
-                            ),
-                        )
-                        .detach()
-                        .cpu()
-                        .numpy()
-                    ),
-                )
-                all_mask_histories = all_mask_histories[
-                    self.ma // 2 : -self.ma // 2 + 1
-                ]
-            else:
-                trend = estimate_trend(all_losses, loss_timestamps)
-                # detrended_loss = all_losses - trend
-                # hi score means dropping that param out tended to cause large increases in loss
-                # lo score means dropping that param tended to have minimal impact or even help
-                pct_diff_loss_to_trend = all_losses / trend - 1
-        else:
-            pct_diff_loss_to_trend = all_losses - all_losses.mean(0, keepdim=True)
-
-        lambdas = torch.cat(
-            [
-                torch.full(
-                    [len(l.remaining_channels)], l.lamb, device=loss_history[0].device
-                )
-                for l in self.dropnprune_layers
-            ]
-        )
-        if self.lambda_multiplier == 0:
-            lambdas = None
-        else:
-            lambdas = (lambdas ** self.lambda_pow) * self.lambda_multiplier
-        outs = linreg_torch(
+        scores = calc_scores(
+            bsize,
             all_mask_histories,
-            pct_diff_loss_to_trend,
-            None if self.variance_estimate_beta else 1 - self.dropnprune_layers[0].p,
-            lamb=lambdas,
-            return_preds=True,
-            return_xtxinv=self.div_scores_by_var,
+            all_losses,
+            1 - self.dropnprune_layers[0].p,
+            self.ma,
         )
-        if not self.div_scores_by_var:
-            scores, preds = outs
-        else:
-            scores, preds, xtxinv = outs
-            n = pct_diff_loss_to_trend.shape[0]
-            k = scores.shape[0]
-            sigmasq = ((pct_diff_loss_to_trend - preds) ** 2).sum() / (n - k)
-            variance_of_scores = sigmasq * xtxinv
-            variance_of_scores = torch.diag(variance_of_scores)
-            # https://stats.stackexchange.com/a/266889/112095
-            scores = scores / variance_of_scores
 
         # TODO: DELETE THIS
         # scores = -scores
@@ -439,9 +406,16 @@ class Pruner:
         tmp_remaining_channels = {}
         num_pruned = 0
         i = -1
-        while num_pruned < n_channels_to_prune:
+        while self.score_threshold is not None or num_pruned < n_channels_to_prune:
             i += 1
             idx = highest_score_idxs[i]
+            if self.score_threshold is not None and scores[idx] < self.score_threshold:
+                print(
+                    f"Score {scores[idx]} below thresh {self.score_threshold}"
+                    f" - exiting after pruning {num_pruned} "
+                    f"(n_channels_to_prune was {n_channels_to_prune})"
+                )
+                break
             layer_idx = layer_idxs[idx].item()
             # Make sure all layers keep at least 1 parameter
             if layer_idx not in tmp_remaining_channels:
@@ -456,6 +430,7 @@ class Pruner:
                     to_prune[layer_idx].append(idx_in_layer)
                 num_pruned += 1
                 tmp_remaining_channels[layer_idx] -= 1
+        self._num_pruned_this_round = num_pruned
         for layer_idx in sorted(to_prune.keys()):
             channels_to_prune = to_prune[layer_idx]
             self.dropnprune_layers[layer_idx].prune_some_channels(
