@@ -223,13 +223,13 @@ class Pruner:
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
-        prune_every_epoch: Optional[int] = 1,
+        prune_every_epoch: Optional[int] = 5,
         variance_estimate_beta: bool = False,
         ma: Optional[int] = 50,
         div_scores_by_var: bool = False,
         rm_trend_pre_ma: bool = True,
         exp_loss: bool = True,
-        score_threshold: float = 0.015,
+        score_threshold: float = 0.01,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
