@@ -233,7 +233,7 @@ class Pruner:
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
-        prune_every_epoch: Optional[int] = 10,
+        prune_every_epoch: Optional[int] = 5,
         ma: Optional[int] = 50,
         score_threshold: float = 2.0,
         div_se: bool = True,
@@ -345,7 +345,8 @@ class Pruner:
             ran_pruning = False
             num_to_prune = self.calc_num_to_prune(batch_idx, epoch)
             if num_to_prune is not None:
-                if num_to_prune > 0 or self.score_threshold is not None:
+                # and self.num_pruned_so_far < self.max_to_prune:
+                if num_to_prune > 0:  # or self.score_threshold is not None:
                     if len([i.masks_history for i in self.dropnprune_layers][0]):
                         if len(self._loss_history):
                             print("num_to_prune", num_to_prune)
