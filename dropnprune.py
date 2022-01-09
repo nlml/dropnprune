@@ -177,7 +177,7 @@ def estimate_trend(y, x, just_linear=False):
     return x.matmul(betas)
 
 
-def calc_scores(bsize, all_mask_histories, all_losses, p, ma):
+def calc_scores(bsize, all_mask_histories, all_losses, p, ma, div_se=True):
     device = all_losses.device
     # all_losses = torch.cat(loss_history, 0)  # (N,)
     all_losses = -torch.exp(-all_losses)
@@ -207,7 +207,17 @@ def calc_scores(bsize, all_mask_histories, all_losses, p, ma):
         all_losses = all_losses - trend_all_losses
     all_losses -= all_losses.mean()
 
-    betas = linreg_torch(all_mask_histories, all_losses, p)
+    betas, preds, xtxinv = linreg_torch(
+        all_mask_histories, all_losses, p, return_preds=True, return_xtxinv=True
+    )
+
+    if div_se:
+        resid = all_losses - preds
+        n = resid.shape[0]
+        k = betas.shape[0]
+        sigmasq = (resid ** 2).sum() / (n - k)
+        se = torch.sqrt(torch.diag(xtxinv * sigmasq))
+        betas /= se
     return betas
 
 
@@ -225,7 +235,8 @@ class Pruner:
         lambda_pow: float = 1,
         prune_every_epoch: Optional[int] = 5,
         ma: Optional[int] = 50,
-        score_threshold: float = 0.008,
+        score_threshold: float = 2.0,
+        div_se: bool = True,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
@@ -238,6 +249,7 @@ class Pruner:
         self.prune_every_epoch = prune_every_epoch
         self.ma = ma
         self.score_threshold = score_threshold
+        self.div_se = div_se
 
         self._loss_history = []
         self.global_step = 0
@@ -366,6 +378,7 @@ class Pruner:
             all_losses,
             1 - self.dropnprune_layers[0].p,
             self.ma,
+            div_se=self.div_se,
         )
 
         # TODO: DELETE THIS
