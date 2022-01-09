@@ -225,7 +225,7 @@ class Pruner:
         lambda_pow: float = 1,
         prune_every_epoch: Optional[int] = 5,
         ma: Optional[int] = 50,
-        score_threshold: float = 0.005,
+        score_threshold: float = 0.008,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
