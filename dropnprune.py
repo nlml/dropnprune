@@ -229,7 +229,7 @@ class Pruner:
         div_scores_by_var: bool = False,
         rm_trend_pre_ma: bool = True,
         exp_loss: bool = True,
-        score_threshold: float = 0.010,
+        score_threshold: float = 0.015,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
@@ -341,7 +341,7 @@ class Pruner:
             ran_pruning = False
             num_to_prune = self.calc_num_to_prune(batch_idx, epoch)
             if num_to_prune is not None:
-                if num_to_prune > 0:
+                if num_to_prune > 0 or self.score_threshold is not None:
                     if len([i.masks_history for i in self.dropnprune_layers][0]):
                         if len(self._loss_history):
                             print("num_to_prune", num_to_prune)
@@ -353,7 +353,7 @@ class Pruner:
         return ran_pruning
 
     def run_pruning(self, loss_history, n_channels_to_prune, save_path=None):
-        if n_channels_to_prune <= 0:
+        if self.score_threshold is None and n_channels_to_prune <= 0:
             return None
         print("Running pruning...")
         now = time.time()
