@@ -224,12 +224,8 @@ class Pruner:
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
         prune_every_epoch: Optional[int] = 5,
-        variance_estimate_beta: bool = False,
         ma: Optional[int] = 50,
-        div_scores_by_var: bool = False,
-        rm_trend_pre_ma: bool = True,
-        exp_loss: bool = True,
-        score_threshold: float = 0.01,
+        score_threshold: float = 0.005,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
@@ -240,11 +236,7 @@ class Pruner:
         self.lambda_multiplier = lambda_multiplier
         self.lambda_pow = lambda_pow
         self.prune_every_epoch = prune_every_epoch
-        self.variance_estimate_beta = variance_estimate_beta
         self.ma = ma
-        self.div_scores_by_var = div_scores_by_var
-        self.rm_trend_pre_ma = rm_trend_pre_ma
-        self.exp_loss = exp_loss
         self.score_threshold = score_threshold
 
         self._loss_history = []
