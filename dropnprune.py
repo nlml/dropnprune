@@ -229,7 +229,7 @@ class Pruner:
         div_scores_by_var: bool = False,
         rm_trend_pre_ma: bool = True,
         exp_loss: bool = True,
-        score_threshold: float = 0.015,
+        score_threshold: float = 0.010,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
