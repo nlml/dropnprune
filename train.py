@@ -14,10 +14,10 @@ from dropnprune import Pruner
 
 seed_everything(3)
 
-EXP_NAME = "prune0.4-drop0.01-every5-ma50-threshT2.0lim-seed3"
+EXP_NAME = "prune0.4-drop0.01-every5-ma50-threshT2.0lim-bs256-seed3"
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 PATH_DATASETS = "/home/liam/woven-cifar10-challenge-master/data"
-BATCH_SIZE = 128
+BATCH_SIZE = 256
 NUM_WORKERS = int(os.cpu_count() / 2)
 
 train_transforms = torchvision.transforms.Compose(
