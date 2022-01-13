@@ -177,19 +177,28 @@ def estimate_trend(y, x, just_linear=False):
     return x.matmul(betas)
 
 
-def calc_scores(bsize, all_mask_histories, all_losses, p, ma, div_se=True):
+def calc_scores(
+    bsize,
+    all_mask_histories,
+    all_losses,
+    p,
+    ma,
+    div_se=True,
+    subtract_linear_trend=True,
+):
     device = all_losses.device
     # all_losses = torch.cat(loss_history, 0)  # (N,)
     all_losses = -torch.exp(-all_losses)
 
-    # Calc a simple linear trend over the training steps (batches) then subtract it
-    # from the per-sample loss
-    al = all_losses.view(-1, bsize).mean(1)
-    trend_al = estimate_trend(
-        al, torch.arange(1, len(al) + 1, device=device), just_linear=True
-    )
-    trend_all_losses = trend_al.unsqueeze(1).repeat([1, bsize]).view(-1)
-    all_losses = all_losses - trend_all_losses
+    if subtract_linear_trend:
+        # Calc a simple linear trend over the training steps (batches) then subtract it
+        # from the per-sample loss
+        al = all_losses.view(-1, bsize).mean(1)
+        trend_al = estimate_trend(
+            al, torch.arange(1, len(al) + 1, device=device), just_linear=True
+        )
+        trend_all_losses = trend_al.unsqueeze(1).repeat([1, bsize]).view(-1)
+        all_losses = all_losses - trend_all_losses
 
     if ma:
         # Calc a moving average over the training steps then subtract from per-sample loss
@@ -233,10 +242,11 @@ class Pruner:
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
-        prune_every_epoch: Optional[int] = 5,
+        prune_every_epoch: Optional[int] = 1,
         ma: Optional[int] = 50,
         score_threshold: Optional[float] = None,
         div_se: bool = True,
+        subtract_linear_trend: bool = False,
     ):
         self.pruning_freq = pruning_freq
         self.prune_on_batch_idx = prune_on_batch_idx
@@ -250,6 +260,7 @@ class Pruner:
         self.ma = ma
         self.score_threshold = score_threshold
         self.div_se = div_se
+        self.subtract_linear_trend = subtract_linear_trend
 
         self._loss_history = []
         self.global_step = 0
@@ -380,6 +391,7 @@ class Pruner:
             1 - self.dropnprune_layers[0].p,
             self.ma,
             div_se=self.div_se,
+            subtract_linear_trend=self.subtract_linear_trend,
         )
 
         # TODO: DELETE THIS
