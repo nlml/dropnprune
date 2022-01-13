@@ -234,7 +234,7 @@ class Pruner:
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
         prune_every_epoch: Optional[int] = 5,
-        ma: Optional[int] = 20,
+        ma: Optional[int] = 100,
         score_threshold: float = 2.0,
         div_se: bool = True,
     ):
