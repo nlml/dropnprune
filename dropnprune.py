@@ -243,7 +243,7 @@ class Pruner:
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
         prune_every_epoch: Optional[int] = 5,
-        ma: Optional[int] = 100,
+        ma: Optional[int] = 50,
         score_threshold: Optional[float] = None,
         div_se: bool = True,
         subtract_linear_trend: bool = False,
