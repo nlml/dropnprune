@@ -74,7 +74,7 @@ class BasicBlock(nn.Module):
         resnet_planes,
         stride=1,
         option="A",
-        dropnprune_p=0.01,
+        dropnprune_p=0.0,
     ):
         super(BasicBlock, self).__init__()
         self.conv1 = nn.Conv2d(
