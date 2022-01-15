@@ -34,6 +34,9 @@ ckpt_path = "lightning_logs/prune0.3-cosineWarm50fix-lmult0-drop0.01-every5-seed
 ckpt_path = "lightning_logs/prune0.4-warm50-drop0.01-every5-ma50-seed1/version_0/checkpoints/epoch=199-step=77999.ckpt"
 ckpt_path = "lightning_logs/prune0.4-drop0.01-every5-ma50-threshFix010-seed3/version_0/checkpoints/epoch=199-step=77999.ckpt"
 ckpt_path = "lightning_logs/prune0.4-drop0.01-every1-ma50-thresh015-seed3/version_1/checkpoints/epoch=199-step=77999.ckpt"
+ckpt_path = "lightning_logs/resnet56-prune0.0-drop0.0f-every5-finish25f-ma50noLin-threshNone-lr0.05-seed3/version_0/checkpoints"
+if not ckpt_path.endswith(".pth"):
+    ckpt_path = os.path.join(ckpt_path, os.listdir(ckpt_path)[0])
 ckpt = torch.load(ckpt_path)
 state_dict = ckpt["state_dict"]
 
@@ -44,7 +47,7 @@ for k in list(state_dict.keys()):
     state_dict[k[len("model.") :]] = state_dict[k]
     del state_dict[k]
 
-model = resnet32()
+model = resnet56()
 model.load_state_dict(state_dict, strict=False)
 model = model.eval().cpu()
 complexity(model)
@@ -63,9 +66,11 @@ sels = [
 ]
 
 f = lambda p: [[p[i * 2], p[i * 2 + 1]] for i in range(5)]
-planes_l1 = f(int_planes_all[:10])
-planes_l2 = f(int_planes_all[10:20])
-planes_l3 = f(int_planes_all[20:30])
+n_per = 5  # resnet32
+n_per = 9  # resnet56
+planes_l1 = f(int_planes_all[: n_per * 2])
+planes_l2 = f(int_planes_all[n_per * 2 : n_per * 4])
+planes_l3 = f(int_planes_all[n_per * 4 : n_per * 6])
 
 model = resnet32(planes_per_layer=[planes_l1, planes_l2, planes_l3])
 
@@ -74,7 +79,7 @@ sel2s = []
 keys = list(state_dict.keys())
 for layer in ["layer1.", "layer2.", "layer3."]:
     this_keys = [i for i in keys if i.startswith(layer)]
-    for i in range(5):
+    for i in range(9):
         sel = sels.pop(0)
         for s in [
             "conv1.weight",
