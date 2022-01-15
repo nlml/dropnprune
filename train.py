@@ -9,12 +9,14 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
 from torchmetrics.functional import accuracy
 
-from resnet import resnet32
+from resnet import resnet32, resnet56
 from dropnprune import Pruner
 
 seed_everything(3)
 
-EXP_NAME = "prune0.4-drop0.01f-every5-finish25f-ma50noLin-threshNone-lr0.05-seed3"
+EXP_NAME = (
+    "resnet56-prune0.4-drop0.01f-every5-finish25f-ma50noLin-threshNone-lr0.05-seed3"
+)
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 PATH_DATASETS = "/home/liam/woven-cifar10-challenge-master/data"
 BATCH_SIZE = 128
@@ -42,7 +44,7 @@ test_transforms = torchvision.transforms.Compose(
 
 
 class LitResnet(LightningModule):
-    def __init__(self, lr=0.05, create_model_fn=resnet32, planes_per_layer=None):
+    def __init__(self, lr=0.05, create_model_fn=resnet56, planes_per_layer=None):
         super().__init__()
 
         self.save_hyperparameters()

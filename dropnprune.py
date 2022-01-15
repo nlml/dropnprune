@@ -277,7 +277,7 @@ class Pruner:
         with torch.no_grad():
             if self.sched_cfg["type"] == "cosine":
                 warmup = self.sched_cfg.get("warmup", 5)
-                finish = self.sched_cfg.get("finish", 25)
+                finish = self.sched_cfg.get("finish", 0)
                 if sched_cfg.get("invert", False):
                     sched_cfg["warmup"] = 0
                     x = torch.cos(torch.linspace(torch.pi, 0, 200 - warmup - finish))
