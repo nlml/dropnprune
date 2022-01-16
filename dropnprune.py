@@ -247,7 +247,7 @@ class Pruner:
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
-        prune_every_epoch: Optional[int] = 1,
+        prune_every_epoch: Optional[int] = 10,
         ma: Optional[int] = 50,
         score_threshold: Optional[float] = None,
         div_se: bool = True,
