@@ -217,7 +217,7 @@ def calc_scores(
     all_losses -= all_losses.mean()
 
     betas, preds, xtxinv = linreg_torch(
-        all_mask_histories, all_losses, p=None, return_preds=True, return_xtxinv=True
+        all_mask_histories, all_losses, p, return_preds=True, return_xtxinv=True
     )
 
     if div_se:
@@ -237,7 +237,7 @@ class Pruner:
         pruning_freq: Optional[int] = None,
         prune_on_batch_idx: Optional[int] = 0,
         pct_to_prune: float = 0.4,
-        sched_cfg: dict = {"type": "cosine", "warmup": 5, "finish": 25},
+        sched_cfg: dict = {"type": "cosine", "warmup": 100, "finish": 25},
         detrending_on: bool = True,
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
