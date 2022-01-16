@@ -30,10 +30,10 @@ def complexity(net):
 # ckpt_path = "lightning_logs/prune0.4-cosineWarm50fix-lmult0-drop0.01/version_0/checkpoints/epoch=199-step=77999.ckpt"
 # ckpt_path = "lightning_logs/prune0.4-cosineWarm50fix-lmult0-drop0.01-every5/version_0/checkpoints/epoch=199-step=77999.ckpt"
 # ckpt_path = "lightning_logs/prune0.5-cosineWarm50fix-lmult0-drop0.01-every5/version_0/checkpoints/epoch=199-step=77999.ckpt"
-ckpt_path = "lightning_logs/prune0.3-cosineWarm50fix-lmult0-drop0.01-every5-seed1/version_0/checkpoints/epoch=199-step=77999.ckpt"
-ckpt_path = "lightning_logs/prune0.4-warm50-drop0.01-every5-ma50-seed1/version_0/checkpoints/epoch=199-step=77999.ckpt"
-ckpt_path = "lightning_logs/prune0.4-drop0.01-every5-ma50-threshFix010-seed3/version_0/checkpoints/epoch=199-step=77999.ckpt"
-ckpt_path = "lightning_logs/prune0.4-drop0.01-every1-ma50-thresh015-seed3/version_1/checkpoints/epoch=199-step=77999.ckpt"
+# ckpt_path = "lightning_logs/prune0.3-cosineWarm50fix-lmult0-drop0.01-every5-seed1/version_0/checkpoints/epoch=199-step=77999.ckpt"
+# ckpt_path = "lightning_logs/prune0.4-warm50-drop0.01-every5-ma50-seed1/version_0/checkpoints/epoch=199-step=77999.ckpt"
+# ckpt_path = "lightning_logs/prune0.4-drop0.01-every5-ma50-threshFix010-seed3/version_0/checkpoints/epoch=199-step=77999.ckpt"
+# ckpt_path = "lightning_logs/prune0.4-drop0.01-every1-ma50-thresh015-seed3/version_1/checkpoints/epoch=199-step=77999.ckpt"
 ckpt_path = "lightning_logs/resnet56-prune0.4-drop0.01f-every1-finish25f-ma50noLin-threshNone-lr0.05-seed3/version_0/checkpoints"
 if not ckpt_path.endswith(".pth"):
     ckpt_path = os.path.join(ckpt_path, os.listdir(ckpt_path)[0])
@@ -65,14 +65,14 @@ sels = [
     if "enabled" in k
 ]
 
-f = lambda p: [[p[i * 2], p[i * 2 + 1]] for i in range(5)]
 n_per = 5  # resnet32
 n_per = 9  # resnet56
+f = lambda p: [[p[i * 2], p[i * 2 + 1]] for i in range(n_per)]
 planes_l1 = f(int_planes_all[: n_per * 2])
 planes_l2 = f(int_planes_all[n_per * 2 : n_per * 4])
 planes_l3 = f(int_planes_all[n_per * 4 : n_per * 6])
 
-model = resnet32(planes_per_layer=[planes_l1, planes_l2, planes_l3])
+model = resnet56(planes_per_layer=[planes_l1, planes_l2, planes_l3])
 
 sel2s = []
 
