@@ -192,8 +192,10 @@ def resnet44():
     return ResNet(BasicBlock, [7, 7, 7])
 
 
-def resnet56():
-    return ResNet(BasicBlock, [9, 9, 9])
+def resnet56(planes_per_layer=None):
+    if planes_per_layer is None:
+        return ResNet(BasicBlock, [9, 9, 9])
+    return ResNet(BasicBlock, [9, 9, 9], planes_per_layer=planes_per_layer)
 
 
 def resnet110():

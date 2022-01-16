@@ -34,7 +34,7 @@ ckpt_path = "lightning_logs/prune0.3-cosineWarm50fix-lmult0-drop0.01-every5-seed
 ckpt_path = "lightning_logs/prune0.4-warm50-drop0.01-every5-ma50-seed1/version_0/checkpoints/epoch=199-step=77999.ckpt"
 ckpt_path = "lightning_logs/prune0.4-drop0.01-every5-ma50-threshFix010-seed3/version_0/checkpoints/epoch=199-step=77999.ckpt"
 ckpt_path = "lightning_logs/prune0.4-drop0.01-every1-ma50-thresh015-seed3/version_1/checkpoints/epoch=199-step=77999.ckpt"
-ckpt_path = "lightning_logs/resnet56-prune0.0-drop0.0f-every5-finish25f-ma50noLin-threshNone-lr0.05-seed3/version_0/checkpoints"
+ckpt_path = "lightning_logs/resnet56-prune0.4-drop0.01f-every1-finish25f-ma50noLin-threshNone-lr0.05-seed3/version_0/checkpoints"
 if not ckpt_path.endswith(".pth"):
     ckpt_path = os.path.join(ckpt_path, os.listdir(ckpt_path)[0])
 ckpt = torch.load(ckpt_path)
@@ -79,7 +79,7 @@ sel2s = []
 keys = list(state_dict.keys())
 for layer in ["layer1.", "layer2.", "layer3."]:
     this_keys = [i for i in keys if i.startswith(layer)]
-    for i in range(9):
+    for i in range(n_per):
         sel = sels.pop(0)
         for s in [
             "conv1.weight",
