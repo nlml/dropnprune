@@ -214,7 +214,6 @@ def calc_scores(
         trend_al = moving_average(alx, ma)
         trend_all_losses = trend_al.unsqueeze(1).repeat([1, bsize]).view(-1)
         all_losses = all_losses - trend_all_losses
-    all_losses -= all_losses.mean()
 
     betas, preds, xtxinv = linreg_torch(
         all_mask_histories, all_losses, p, return_preds=True, return_xtxinv=True
