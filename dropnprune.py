@@ -399,7 +399,7 @@ class Pruner:
         )
 
         # TODO: DELETE THIS
-        # scores = -scores
+        scores = -scores
         # scores = torch.randn([len(scores)])
         # scores = -torch.abs(scores)
         if 0:  # save_path is not None:
