@@ -235,18 +235,18 @@ class Pruner:
         model,
         pruning_freq: Optional[int] = None,
         prune_on_batch_idx: Optional[int] = 0,
-        pct_to_prune: float = 0.4,
+        pct_to_prune: float = 0.7,
         sched_cfg: dict = {
             "type": "cosine",
-            "warmup": 100,
+            "warmup": 25,
             "finish": 25,
-            "hard_warmup": True,
+            "hard_warmup": False,
         },
         detrending_on: bool = True,
         dropout_ratio_mode: bool = False,
         lambda_multiplier: float = 0,
         lambda_pow: float = 1,
-        prune_every_epoch: Optional[int] = 10,
+        prune_every_epoch: Optional[int] = 1,
         ma: Optional[int] = 50,
         score_threshold: Optional[float] = None,
         div_se: bool = True,
@@ -399,7 +399,7 @@ class Pruner:
         )
 
         # TODO: DELETE THIS
-        scores = -scores
+        # scores = -scores
         # scores = torch.randn([len(scores)])
         # scores = -torch.abs(scores)
         if 0:  # save_path is not None:
