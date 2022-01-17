@@ -238,9 +238,9 @@ class Pruner:
         pct_to_prune: float = 0.7,
         sched_cfg: dict = {
             "type": "cosine",
-            "warmup": 25,
+            "warmup": 100,
             "finish": 25,
-            "hard_warmup": False,
+            "hard_warmup": True,
         },
         detrending_on: bool = True,
         dropout_ratio_mode: bool = False,

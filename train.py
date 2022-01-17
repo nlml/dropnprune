@@ -14,7 +14,7 @@ from dropnprune import Pruner
 
 seed_everything(3)
 
-EXP_NAME = "resnet56-prune0.7-drop0.01-every1-warm25finish25-ma50noLinF-threshNone-lr0.05-seed3"
+EXP_NAME = "resnet56-prune0.7-drop0.01-every1-warmHard100finish25-ma50noLinF-threshNone-lr0.05-seed3"
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 PATH_DATASETS = "/home/liam/woven-cifar10-challenge-master/data"
 BATCH_SIZE = 128
